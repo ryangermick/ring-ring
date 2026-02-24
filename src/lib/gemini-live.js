@@ -1,10 +1,23 @@
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.BidiGenerateContent?key=${API_KEY}`;
+const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+
+async function blobToJSON(blob) {
+  const text = await blob.text();
+  return JSON.parse(text);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 export class GeminiLiveSession {
-  constructor({ character, onAudioData, onTranscript, onStateChange }) {
+  constructor({ character, onTranscript, onStateChange }) {
     this.character = character;
-    this.onAudioData = onAudioData;
     this.onTranscript = onTranscript;
     this.onStateChange = onStateChange;
     this.ws = null;
@@ -20,7 +33,7 @@ export class GeminiLiveSession {
   async connect() {
     this.onStateChange?.('connecting');
 
-    // Set up audio context for playback
+    // Set up audio context for playback (24kHz output from Gemini)
     this.audioContext = new AudioContext({ sampleRate: 24000 });
 
     // Open WebSocket
@@ -29,9 +42,9 @@ export class GeminiLiveSession {
     return new Promise((resolve, reject) => {
       this.ws.onopen = () => {
         // Send setup message
-        this.ws.send(JSON.stringify({
+        const setupMessage = {
           setup: {
-            model: 'models/gemini-2.0-flash-exp',
+            model: 'models/gemini-2.5-flash-native-audio-latest',
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: {
@@ -46,11 +59,17 @@ export class GeminiLiveSession {
               parts: [{ text: this.character.systemPrompt }]
             }
           }
-        }));
+        };
+        this.ws.send(JSON.stringify(setupMessage));
       };
 
-      this.ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+      this.ws.onmessage = async (event) => {
+        let data;
+        if (event.data instanceof Blob) {
+          data = await blobToJSON(event.data);
+        } else {
+          data = JSON.parse(event.data);
+        }
 
         // Setup complete response
         if (data.setupComplete) {
@@ -61,21 +80,31 @@ export class GeminiLiveSession {
           return;
         }
 
-        // Handle audio response
+        // Handle server content (audio/text)
         if (data.serverContent) {
-          const parts = data.serverContent.modelTurn?.parts || [];
-          for (const part of parts) {
-            if (part.inlineData?.mimeType?.startsWith('audio/')) {
-              this._queueAudio(part.inlineData.data);
-            }
-            if (part.text) {
-              this.onTranscript?.('character', part.text);
+          const { serverContent } = data;
+
+          if (serverContent.interrupted) {
+            // Stop current playback
+            this._stopPlayback();
+            this.onStateChange?.('listening');
+            return;
+          }
+
+          if (serverContent.modelTurn) {
+            const parts = serverContent.modelTurn.parts || [];
+            for (const part of parts) {
+              if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
+                this._queueAudio(part.inlineData.data);
+              }
+              if (part.text) {
+                this.onTranscript?.('character', part.text);
+              }
             }
           }
 
-          // If turn is complete
-          if (data.serverContent.turnComplete) {
-            this.onStateChange?.('listening');
+          if (serverContent.turnComplete) {
+            // Will transition to listening after audio finishes playing
           }
         }
       };
@@ -86,7 +115,8 @@ export class GeminiLiveSession {
         reject(err);
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
         this.onStateChange?.('disconnected');
       };
 
@@ -149,25 +179,26 @@ export class GeminiLiveSession {
     }
   }
 
-  async _queueAudio(base64Data) {
+  _stopPlayback() {
+    if (this.currentSource) {
+      try { this.currentSource.stop(); } catch(e) {}
+      this.currentSource = null;
+    }
+    this.playbackQueue = [];
+    this.isPlaying = false;
+  }
+
+  _queueAudio(base64Data) {
     this.onStateChange?.('speaking');
 
     try {
-      // Decode base64 to PCM bytes
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Convert PCM16 to Float32 for Web Audio API
-      const int16 = new Int16Array(bytes.buffer);
+      const arrayBuffer = base64ToArrayBuffer(base64Data);
+      const int16 = new Int16Array(arrayBuffer);
       const float32 = new Float32Array(int16.length);
       for (let i = 0; i < int16.length; i++) {
         float32[i] = int16[i] / 32768.0;
       }
 
-      // Create AudioBuffer
       const audioBuffer = this.audioContext.createBuffer(1, float32.length, 24000);
       audioBuffer.getChannelData(0).set(float32);
 
@@ -214,12 +245,7 @@ export class GeminiLiveSession {
     }
 
     // Stop playback
-    if (this.currentSource) {
-      try { this.currentSource.stop(); } catch(e) {}
-      this.currentSource = null;
-    }
-    this.playbackQueue = [];
-    this.isPlaying = false;
+    this._stopPlayback();
 
     // Close audio context
     if (this.audioContext) {
