@@ -1,5 +1,5 @@
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
 
 async function blobToJSON(blob) {
   const text = await blob.text();
@@ -24,9 +24,9 @@ export class GeminiLiveSession {
     this.audioContext = null;
     this.mediaStream = null;
     this.processor = null;
-    this.playbackQueue = [];
     this.isPlaying = false;
-    this.currentSource = null;
+    this.activeSources = [];
+    this.nextPlayTime = 0;
     this.setupComplete = false;
   }
 
@@ -44,7 +44,7 @@ export class GeminiLiveSession {
         // Send setup message
         const setupMessage = {
           setup: {
-            model: 'models/gemini-2.5-flash-native-audio-latest',
+            model: 'models/gemini-2.0-flash-live-001',
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: {
@@ -76,6 +76,18 @@ export class GeminiLiveSession {
           this.setupComplete = true;
           this.onStateChange?.('connected');
           this._startMicrophone();
+
+          // Send initial prompt so the character greets the kid first
+          this.ws.send(JSON.stringify({
+            clientContent: {
+              turns: [{
+                role: 'user',
+                parts: [{ text: `A child just called you! Greet them enthusiastically in character. Say your catchphrase and ask them a fun question to start the conversation. Keep it short and exciting — you're picking up the phone!` }]
+              }],
+              turnComplete: true
+            }
+          }));
+
           resolve();
           return;
         }
@@ -180,16 +192,17 @@ export class GeminiLiveSession {
   }
 
   _stopPlayback() {
-    if (this.currentSource) {
-      try { this.currentSource.stop(); } catch(e) {}
-      this.currentSource = null;
-    }
-    this.playbackQueue = [];
+    this.activeSources.forEach(s => { try { s.stop(); } catch(e) {} });
+    this.activeSources = [];
+    this.nextPlayTime = 0;
     this.isPlaying = false;
   }
 
   _queueAudio(base64Data) {
-    this.onStateChange?.('speaking');
+    if (!this.isPlaying) {
+      this.onStateChange?.('speaking');
+    }
+    this.isPlaying = true;
 
     try {
       const arrayBuffer = base64ToArrayBuffer(base64Data);
@@ -202,31 +215,36 @@ export class GeminiLiveSession {
       const audioBuffer = this.audioContext.createBuffer(1, float32.length, 24000);
       audioBuffer.getChannelData(0).set(float32);
 
-      this.playbackQueue.push(audioBuffer);
-      this._playNext();
+      // Gapless scheduled playback — schedule each chunk right after the previous
+      const now = this.audioContext.currentTime;
+      if (!this.nextPlayTime || this.nextPlayTime < now) {
+        this.nextPlayTime = now;
+      }
+
+      // Create gain node to prevent clipping
+      const gainNode = this.audioContext.createGain();
+      gainNode.gain.value = 0.85;
+      gainNode.connect(this.audioContext.destination);
+
+      const source = this.audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(gainNode);
+      source.start(this.nextPlayTime);
+
+      this.nextPlayTime += audioBuffer.duration;
+      this.activeSources.push(source);
+
+      // Clean up finished sources and detect end of speech
+      source.onended = () => {
+        this.activeSources = this.activeSources.filter(s => s !== source);
+        if (this.activeSources.length === 0) {
+          this.isPlaying = false;
+          this.onStateChange?.('listening');
+        }
+      };
     } catch (err) {
       console.error('Audio decode error:', err);
     }
-  }
-
-  _playNext() {
-    if (this.isPlaying || this.playbackQueue.length === 0) return;
-
-    this.isPlaying = true;
-    const buffer = this.playbackQueue.shift();
-    this.currentSource = this.audioContext.createBufferSource();
-    this.currentSource.buffer = buffer;
-    this.currentSource.connect(this.audioContext.destination);
-    this.currentSource.onended = () => {
-      this.isPlaying = false;
-      this.currentSource = null;
-      if (this.playbackQueue.length > 0) {
-        this._playNext();
-      } else {
-        this.onStateChange?.('listening');
-      }
-    };
-    this.currentSource.start();
   }
 
   disconnect() {
