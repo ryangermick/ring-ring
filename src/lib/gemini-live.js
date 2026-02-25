@@ -37,17 +37,7 @@ export class GeminiLiveSession {
   async connect() {
     this.onStateChange?.('connecting');
 
-    // Set up audio context for playback (24kHz output from Gemini)
-    // Created here but may need resume after user gesture
-    this.audioContext = new AudioContext({ sampleRate: 24000 });
-    if (this.audioContext.state === 'suspended') await this.audioContext.resume();
-
-    // Output analyser for real-time volume monitoring
-    this.outputAnalyser = this.audioContext.createAnalyser();
-    this.outputAnalyser.fftSize = 256;
-    this.outputAnalyser.smoothingTimeConstant = 0.3;
-    this.outputAnalyser.connect(this.audioContext.destination);
-
+    // Audio context created lazily in _ensureAudioContext() to comply with autoplay policy
     // Open WebSocket
     this.ws = new WebSocket(WS_URL);
 
@@ -65,9 +55,9 @@ export class GeminiLiveSession {
                   }
                 }
               },
-              outputAudioTranscription: {},
-              inputAudioTranscription: {},
             },
+            outputAudioTranscription: {},
+            inputAudioTranscription: {},
             systemInstruction: {
               parts: [{ text: this.character.systemPrompt }]
             }
@@ -147,6 +137,21 @@ export class GeminiLiveSession {
 
       setTimeout(() => reject(new Error('Connection timeout')), 15000);
     });
+  }
+
+  async _ensureAudioContext() {
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      this.audioContext = new AudioContext({ sampleRate: 24000 });
+    }
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
+    if (!this.outputAnalyser) {
+      this.outputAnalyser = this.audioContext.createAnalyser();
+      this.outputAnalyser.fftSize = 256;
+      this.outputAnalyser.smoothingTimeConstant = 0.3;
+      this.outputAnalyser.connect(this.audioContext.destination);
+    }
   }
 
   async _startMicrophone() {
@@ -234,7 +239,9 @@ export class GeminiLiveSession {
     this.isPlaying = false;
   }
 
-  _queueAudio(base64Data) {
+  async _queueAudio(base64Data) {
+    await this._ensureAudioContext();
+
     if (!this.isPlaying) {
       this.onStateChange?.('speaking');
     }

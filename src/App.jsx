@@ -284,6 +284,9 @@ export default function App() {
     transcriptRef.current = [];
     dbRecordIdRef.current = null;
 
+    // Warm up AudioContext on user gesture (browser requires this)
+    getRingCtx();
+
     try {
       const { data } = await supabase.from('conversations')
         .insert({ user_id: user.id, character_id: character.id })
@@ -523,7 +526,7 @@ export default function App() {
       <div className="min-h-dvh bg-[#1A1A2E] flex flex-col items-center px-8 relative overflow-hidden">
         <GlobalStyles />
         {/* Tiled pattern background */}
-        <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'url(/pattern-bg.jpg)', backgroundSize: '300px', backgroundRepeat: 'repeat' }} />
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{ backgroundImage: 'url(/pattern-bg.jpg)', backgroundSize: '300px', backgroundRepeat: 'repeat' }} />
 
         {/* Back button */}
         <div className="absolute top-0 left-0 z-20 pt-14 pl-6 sm:pt-16 sm:pl-8">
