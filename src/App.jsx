@@ -431,7 +431,14 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Image</label>
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 relative shrink-0 border-2 border-dashed border-slate-200">
-                    {char.image ? (
+                    {generatingImage ? (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <svg className="w-6 h-6 animate-spin text-teal-500" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      </div>
+                    ) : char.image ? (
                       <img src={char.image} alt="" className="absolute inset-0 w-full h-full object-cover object-[50%_30%]" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-300">
