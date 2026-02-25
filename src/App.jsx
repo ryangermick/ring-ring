@@ -224,6 +224,7 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
   const [generating, setGenerating] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [showDetails, setShowDetails] = useState(!!char.name);
   const [customFranchise, setCustomFranchise] = useState(
     char.franchise && !franchises.find(f => f.id === char.franchise) && char.franchise !== 'custom' ? char.franchise : ''
@@ -277,6 +278,42 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
       alert('Image upload failed: ' + err.message);
     }
     setUploading(false);
+  };
+
+  const handleGenerateImage = async () => {
+    if (!char.name) return alert('Add a name first');
+    setGeneratingImage(true);
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const prompt = `Cute friendly cartoon character: ${char.name}${char.description ? ' - ' + char.description : ''}${char.franchise && char.franchise !== 'custom' ? ' from the ' + char.franchise.replace(/-/g, ' ') + ' franchise' : ''}. Watercolor cartoon illustration style, warm soft colors, friendly expression, kid-friendly, bold outlines, soft watercolor textures like a children's storybook, pure white background, portrait upper body centered.`;
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+        })
+      });
+      const data = await resp.json();
+      const imgPart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+      if (!imgPart) throw new Error('No image generated');
+
+      // Upload to Supabase Storage
+      const b64 = imgPart.inlineData.data;
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'image/png' });
+      const fileName = `${char.id || char.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}.png`;
+      const { error } = await supabase.storage.from('character-images').upload(fileName, blob, { cacheControl: '3600', upsert: true });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('character-images').getPublicUrl(fileName);
+      setChar(p => ({ ...p, image: publicUrl }));
+    } catch (err) {
+      console.error('Image gen failed:', err);
+      alert('Image generation failed: ' + err.message);
+    }
+    setGeneratingImage(false);
   };
 
   return (
@@ -376,10 +413,16 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
                     )}
                   </div>
                   <div className="flex-1 flex flex-col gap-2">
-                    <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-                      className="bg-white rounded-xl px-4 py-2.5 text-sm font-semibold text-[#4285F4] border border-slate-200 hover:border-[#4285F4] transition-all active:scale-[0.97]">
-                      {uploading ? 'Uploading…' : 'Upload image'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button onClick={handleGenerateImage} disabled={generatingImage || !char.name}
+                        className="flex-1 bg-teal-50 rounded-xl px-3 py-2.5 text-sm font-semibold text-teal-600 border border-teal-200 hover:border-teal-400 transition-all active:scale-[0.97] disabled:opacity-50">
+                        {generatingImage ? 'Generating…' : '✨ Generate'}
+                      </button>
+                      <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                        className="flex-1 bg-white rounded-xl px-3 py-2.5 text-sm font-semibold text-[#4285F4] border border-slate-200 hover:border-[#4285F4] transition-all active:scale-[0.97]">
+                        {uploading ? 'Uploading…' : 'Upload'}
+                      </button>
+                    </div>
                     <input type="text" value={char.image}
                       onChange={e => setChar(p => ({...p, image: e.target.value}))}
                       className="w-full bg-white rounded-xl px-3 py-2 text-[#1A1A2E] text-xs border border-slate-200 focus:border-[#4285F4] outline-none transition-all"
