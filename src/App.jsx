@@ -229,7 +229,7 @@ Character: ${name}${description ? ' — ' + description : ''}${franchise && fran
 
 STYLE REQUIREMENTS: Watercolor paint texture visible in coloring, bold black outlines around all shapes, warm soft color palette, friendly kid-safe expression, rounded cartoon proportions, portrait upper body centered, pure white background with no border or shadow.`;
 
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${imgKey}`, {
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${imgKey}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [
