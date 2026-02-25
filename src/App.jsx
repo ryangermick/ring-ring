@@ -1097,31 +1097,30 @@ export default function App() {
       <div className="min-h-dvh bg-white flex flex-col items-center relative overflow-hidden">
         <GlobalStyles />
 
-        {/* Top bar — back + edit */}
+        {/* Top bar — logo centered, back + edit on sides */}
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between pt-14 px-6 sm:pt-16 sm:px-8">
           <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }} className="flex items-center gap-2 text-slate-400 hover:text-slate-600 active:scale-95 transition-all">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
-            <span className="text-sm font-semibold">Back</span>
           </button>
+          <img src="/logo-trimmed.png" alt="Ring Ring Ring" className="h-10 sm:h-12 opacity-80" />
           <button onClick={async () => { const char = {...activeCharacter}; await handleHangUp(); setEditingChar(char); setScreen('characters', char.id); }} className="flex items-center gap-1.5 text-slate-400 hover:text-slate-600 active:scale-95 transition-all">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
-            <span className="text-sm font-semibold">Edit</span>
           </button>
         </div>
 
-        {/* Large character image — dominant visual */}
-        <div className="flex-1 flex flex-col items-center justify-center w-full px-8 pt-24 pb-4">
+        {/* Massive character image — seamless with white bg, no shadow */}
+        <div className="flex-1 flex flex-col items-center justify-center w-full pt-24 pb-0">
           <div className={`relative transition-all duration-500 ${speaking ? 'scale-[1.03]' : ''} ${ringing ? 'animate-pulse' : ''}`}>
             <img src={activeCharacter.image} alt={activeCharacter.name}
-              className="w-64 h-64 sm:w-80 sm:h-80 object-contain drop-shadow-xl" />
+              className="w-[85vw] h-[85vw] max-w-[480px] max-h-[480px] object-contain" />
             {/* Subtle glow behind image based on state */}
-            {speaking && <div className="absolute inset-0 -z-10 bg-amber-200/30 rounded-full blur-3xl scale-110" />}
-            {listening && <div className="absolute inset-0 -z-10 bg-emerald-200/30 rounded-full blur-3xl scale-110" />}
-            {ringing && <div className="absolute inset-0 -z-10 bg-blue-200/20 rounded-full blur-3xl scale-110 animate-pulse" />}
+            {speaking && <div className="absolute inset-0 -z-10 bg-amber-100/40 rounded-full blur-[80px] scale-125" />}
+            {listening && <div className="absolute inset-0 -z-10 bg-emerald-100/40 rounded-full blur-[80px] scale-125" />}
+            {ringing && <div className="absolute inset-0 -z-10 bg-blue-100/30 rounded-full blur-[80px] scale-125 animate-pulse" />}
           </div>
         </div>
 
