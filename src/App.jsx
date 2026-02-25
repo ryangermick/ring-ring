@@ -1112,16 +1112,10 @@ export default function App() {
           </button>
         </div>
 
-        {/* Massive character image — seamless with white bg, no shadow */}
-        <div className="flex-1 flex flex-col items-center justify-center w-full pt-24 pb-0">
-          <div className={`relative transition-all duration-500 ${speaking ? 'scale-[1.03]' : ''} ${ringing ? 'animate-pulse' : ''}`}>
-            <img src={activeCharacter.image} alt={activeCharacter.name}
-              className="w-[85vw] h-[85vw] max-w-[480px] max-h-[480px] object-contain" />
-            {/* Subtle glow behind image based on state */}
-            {speaking && <div className="absolute inset-0 -z-10 bg-amber-100/40 rounded-full blur-[80px] scale-125" />}
-            {listening && <div className="absolute inset-0 -z-10 bg-emerald-100/40 rounded-full blur-[80px] scale-125" />}
-            {ringing && <div className="absolute inset-0 -z-10 bg-blue-100/30 rounded-full blur-[80px] scale-125 animate-pulse" />}
-          </div>
+        {/* Massive character image — seamless with white bg */}
+        <div className="flex-1 flex flex-col items-center justify-center w-full pt-20 pb-0 overflow-hidden">
+          <img src={activeCharacter.image} alt={activeCharacter.name}
+            className={`w-[130vw] max-w-[800px] object-contain transition-transform duration-500 ${speaking ? 'scale-[1.06]' : ''}`} />
         </div>
 
         {/* Bottom controls area */}
