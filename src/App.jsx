@@ -240,18 +240,47 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
     try {
       const result = await generateCharacter(aiPrompt);
       const id = (result.name || aiPrompt).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+      const charName = result.name || aiPrompt;
+      const charDesc = result.description || '';
+      const charFranchise = result.franchise || char.franchise || 'custom';
       setChar(p => ({
         ...p,
         id: p.id || id,
-        name: result.name || p.name,
-        description: result.description || p.description,
+        name: charName,
+        description: charDesc,
         greeting: result.greeting || p.greeting,
         systemPrompt: result.systemPrompt || p.systemPrompt,
         voiceName: result.voiceName || p.voiceName,
-        franchise: result.franchise || p.franchise || 'custom',
+        franchise: charFranchise,
         isCustom: true,
       }));
       setShowDetails(true);
+      // Auto-generate image in background
+      setGeneratingImage(true);
+      try {
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        const imgPrompt = `Cute friendly cartoon character: ${charName}${charDesc ? ' - ' + charDesc : ''}${charFranchise !== 'custom' ? ' from the ' + charFranchise.replace(/-/g, ' ') + ' franchise' : ''}. Watercolor cartoon illustration style, warm soft colors, friendly expression, kid-friendly, bold outlines, soft watercolor textures like a children's storybook, pure white background, portrait upper body centered.`;
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+          method: 'POST',headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: imgPrompt }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } })
+        });
+        const imgData = await resp.json();
+        const imgPart = imgData.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+        if (imgPart) {
+          const b64 = imgPart.inlineData.data;
+          const binary = atob(b64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blob = new Blob([bytes], { type: 'image/png' });
+          const fileName = `${id}-${Date.now()}.png`;
+          const { error: upErr } = await supabase.storage.from('character-images').upload(fileName, blob, { cacheControl: '3600', upsert: true });
+          if (!upErr) {
+            const { data: { publicUrl } } = supabase.storage.from('character-images').getPublicUrl(fileName);
+            setChar(p => ({ ...p, image: publicUrl }));
+          }
+        }
+      } catch (imgErr) { console.error('Auto image gen failed:', imgErr); }
+      setGeneratingImage(false);
     } catch (err) {
       console.error('AI generate failed:', err);
       alert('Failed to generate character. Try again.');
