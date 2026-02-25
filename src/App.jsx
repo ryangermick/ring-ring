@@ -593,7 +593,7 @@ export default function App() {
       const { data, error } = await supabase.from('characters').select('*').order('franchise');
       if (data && data.length > 0) {
         // Map DB fields to app fields
-        setCharacters(data.map(c => ({
+        const mapped = data.map(c => ({
           id: c.id,
           name: c.name,
           franchise: c.franchise,
@@ -604,7 +604,17 @@ export default function App() {
           systemPrompt: c.system_prompt || '',
           isCustom: c.is_custom,
           createdBy: c.created_by,
-        })));
+        }));
+        // Sort to match defaultCharacters order (known chars first, then by DB order)
+        const orderMap = {};
+        defaultCharacters.forEach((c, i) => { orderMap[c.id] = i; });
+        mapped.sort((a, b) => {
+          const ai = orderMap[a.id] ?? 9999;
+          const bi = orderMap[b.id] ?? 9999;
+          if (a.franchise !== b.franchise) return a.franchise.localeCompare(b.franchise);
+          return ai - bi;
+        });
+        setCharacters(mapped);
       }
     } catch (err) {
       console.error('Failed to load characters:', err);
