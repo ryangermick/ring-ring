@@ -474,7 +474,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [screen, setScreenRaw] = useState('login');
   const [activeCharacter, setActiveCharacter] = useState(null);
-  const [callState, setCallState] = useState('ringing');
+  const [callState, setCallState] = useState('idle');
   const [duration, setDuration] = useState(0);
   const [history, setHistory] = useState([]);
   const [characters, setCharacters] = useState(defaultCharacters);
@@ -547,7 +547,7 @@ export default function App() {
   };
 
   // Ringing sound (respects settings)
-  useRingSound(callState === 'ringing' && settings.sound_effects);
+  useRingSound(screen === 'call' && callState === 'ringing' && settings.sound_effects);
 
   // Transcript viewer
   const [viewingTranscript, setViewingTranscript] = useState(null);
