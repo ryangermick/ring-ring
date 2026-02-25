@@ -474,6 +474,11 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [screen, setScreenRaw] = useState('login');
   const [activeCharacter, setActiveCharacter] = useState(null);
+  const [callState, setCallState] = useState('ringing');
+  const [duration, setDuration] = useState(0);
+  const [history, setHistory] = useState([]);
+  const [characters, setCharacters] = useState(defaultCharacters);
+  const [error, setError] = useState(null);
 
   // URL slug sync
   const screenToPath = { shelf: '/', history: '/history', characters: '/characters', profile: '/profile', settings: '/settings', login: '/login', call: '/call', transcript: '/transcript' };
@@ -499,18 +504,13 @@ export default function App() {
         // Could be a character slug like /woody
         const slug = path.slice(1);
         const char = characters.find(c => c.id === slug);
-        if (char && user) { startCall(char); }
+        if (char && user) { setActiveCharacter(char); setScreenRaw('call'); }
         else { setScreenRaw('shelf'); }
       }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [characters, user]);
-  const [callState, setCallState] = useState('ringing');
-  const [duration, setDuration] = useState(0);
-  const [history, setHistory] = useState([]);
-  const [characters, setCharacters] = useState(defaultCharacters);
-  const [error, setError] = useState(null);
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
