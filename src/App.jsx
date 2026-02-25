@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { defaultCharacters, franchises, VOICE_OPTIONS } from './data/characters';
 import { supabase } from './lib/supabase';
 import { GeminiLiveSession } from './lib/gemini-live';
+import { generateCharacter } from './lib/generate-character';
 
 const GlobalStyles = () => (
   <style>{`
@@ -523,6 +524,17 @@ export default function App() {
         <GlobalStyles />
         {/* Tiled pattern background */}
         <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'url(/pattern-bg.jpg)', backgroundSize: '300px', backgroundRepeat: 'repeat' }} />
+
+        {/* Back button */}
+        <div className="absolute top-0 left-0 z-20 pt-14 pl-6 sm:pt-16 sm:pl-8">
+          <button onClick={handleHangUp} className="flex items-center gap-2 text-white/40 hover:text-white/70 active:scale-95 transition-all">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="text-sm font-semibold">Back</span>
+          </button>
+        </div>
+
         <div className="h-16 sm:h-24 shrink-0" />
 
         <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
@@ -740,103 +752,220 @@ export default function App() {
         </main>
 
         {/* ═══ Character Editor Modal ═══ */}
-        {editingChar && (
-          <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center"
-            onClick={(e) => { if (e.target === e.currentTarget) setEditingChar(null); }}>
-            <div className="bg-[#FFFBF5] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-y-auto p-8 shadow-2xl">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-xl font-black text-[#1A1A2E]">
-                  {editingChar.id ? 'Edit Character' : 'New Character'}
-                </h2>
-                <button onClick={() => setEditingChar(null)} className="text-slate-400 hover:text-slate-600">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-5">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Name</label>
-                  <input type="text" value={editingChar.name}
-                    onChange={e => setEditingChar(p => ({...p, name: e.target.value, id: p.id || e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-')}))}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
-                    placeholder="Character name" />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Description</label>
-                  <input type="text" value={editingChar.description}
-                    onChange={e => setEditingChar(p => ({...p, description: e.target.value}))}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
-                    placeholder="Short description" />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Franchise</label>
-                  <select value={editingChar.franchise}
-                    onChange={e => setEditingChar(p => ({...p, franchise: e.target.value}))}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
-                    {franchises.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    <option value="custom">Custom</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Voice</label>
-                  <select value={editingChar.voiceName}
-                    onChange={e => setEditingChar(p => ({...p, voiceName: e.target.value}))}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
-                    {VOICE_OPTIONS.map(v => (
-                      <option key={v.value} value={v.value}>{v.label} — {v.gender} · {v.desc}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Image URL</label>
-                  <input type="text" value={editingChar.image}
-                    onChange={e => setEditingChar(p => ({...p, image: e.target.value}))}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
-                    placeholder="/characters/name.png or URL" />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Greeting</label>
-                  <input type="text" value={editingChar.greeting}
-                    onChange={e => setEditingChar(p => ({...p, greeting: e.target.value}))}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
-                    placeholder="What they say when they pick up" />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">System Prompt</label>
-                  <textarea value={editingChar.systemPrompt}
-                    onChange={e => setEditingChar(p => ({...p, systemPrompt: e.target.value}))}
-                    rows={4}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all resize-none"
-                    placeholder="You are [character]. You speak like..." />
-                </div>
-
-                <div className="flex gap-3 mt-2">
-                  <button onClick={() => saveCharacter(editingChar)} disabled={charSaving || !editingChar.name}
-                    className="flex-1 bg-[#4285F4] hover:bg-[#3B78DB] disabled:opacity-50 text-white rounded-xl py-3.5 font-bold transition-all active:scale-[0.97]">
-                    {charSaving ? 'Saving…' : 'Save'}
-                  </button>
-                  {editingChar.id && editingChar.isCustom && (
-                    <button onClick={() => deleteCharacter(editingChar.id)}
-                      className="bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl px-5 py-3.5 font-bold transition-all active:scale-[0.97]">
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {editingChar && <CharacterEditor
+          char={editingChar}
+          setChar={setEditingChar}
+          onSave={saveCharacter}
+          onDelete={deleteCharacter}
+          saving={charSaving}
+          user={user}
+        />}
       </div>
     );
   }
 
   return null;
+}
+
+/* ═══════════════════ CHARACTER EDITOR MODAL ═══════════════════ */
+function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
+  const [generating, setGenerating] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [showDetails, setShowDetails] = useState(!!char.name);
+  const fileInputRef = useRef(null);
+
+  const handleGenerate = async () => {
+    if (!aiPrompt.trim()) return;
+    setGenerating(true);
+    try {
+      const result = await generateCharacter(aiPrompt);
+      const id = (result.name || aiPrompt).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+      setChar(p => ({
+        ...p,
+        id: p.id || id,
+        name: result.name || p.name,
+        description: result.description || p.description,
+        greeting: result.greeting || p.greeting,
+        systemPrompt: result.systemPrompt || p.systemPrompt,
+        voiceName: result.voiceName || p.voiceName,
+        franchise: result.franchise || p.franchise || 'custom',
+        isCustom: true,
+      }));
+      setShowDetails(true);
+    } catch (err) {
+      console.error('AI generate failed:', err);
+      alert('Failed to generate character. Try again.');
+    }
+    setGenerating(false);
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'png';
+      const fileName = `${char.id || Date.now()}-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from('character-images').upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('character-images').getPublicUrl(fileName);
+      setChar(p => ({ ...p, image: publicUrl }));
+    } catch (err) {
+      console.error('Upload failed:', err);
+      alert('Image upload failed: ' + err.message);
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center"
+      onClick={(e) => { if (e.target === e.currentTarget) setChar(null); }}>
+      <div className="bg-[#FFFBF5] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-y-auto p-8 shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-black text-[#1A1A2E]">
+            {char.id && char.name ? 'Edit Character' : 'New Character'}
+          </h2>
+          <button onClick={() => setChar(null)} className="text-slate-400 hover:text-slate-600">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-5">
+          {/* ── AI Auto-fill ── */}
+          {!char.name && (
+            <div className="bg-gradient-to-br from-teal-50 to-sky-50 rounded-2xl p-5 border border-teal-100">
+              <label className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-2 block">✨ Describe a character</label>
+              <textarea
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                rows={2}
+                className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-teal-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 outline-none transition-all resize-none text-sm"
+                placeholder="e.g. A silly pirate parrot who loves treasure hunts and says 'Squawk!' a lot"
+              />
+              <button onClick={handleGenerate} disabled={generating || !aiPrompt.trim()}
+                className="mt-3 w-full bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white rounded-xl py-3 font-bold transition-all active:scale-[0.97] text-sm">
+                {generating ? 'Generating…' : 'Auto-fill all fields ✨'}
+              </button>
+              <div className="flex items-center gap-3 mt-4">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-xs text-slate-400 font-medium">or fill manually</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+              <button onClick={() => setShowDetails(true)} className="mt-3 w-full text-sm text-slate-500 hover:text-[#4285F4] font-semibold transition-colors">
+                Fill in details manually →
+              </button>
+            </div>
+          )}
+
+          {/* ── Detail fields (shown after AI fill or manual toggle) ── */}
+          {(showDetails || char.name) && (
+            <>
+              {/* Image upload + preview */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Image</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 relative shrink-0 border-2 border-dashed border-slate-200">
+                    {char.image ? (
+                      <img src={char.image} alt="" className="absolute inset-0 w-[115%] h-[115%] max-w-none -ml-[7.5%] -mt-[7.5%] object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-300">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 flex flex-col gap-2">
+                    <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                      className="bg-white rounded-xl px-4 py-2.5 text-sm font-semibold text-[#4285F4] border border-slate-200 hover:border-[#4285F4] transition-all active:scale-[0.97]">
+                      {uploading ? 'Uploading…' : 'Upload image'}
+                    </button>
+                    <input type="text" value={char.image}
+                      onChange={e => setChar(p => ({...p, image: e.target.value}))}
+                      className="w-full bg-white rounded-xl px-3 py-2 text-[#1A1A2E] text-xs border border-slate-200 focus:border-[#4285F4] outline-none transition-all"
+                      placeholder="or paste URL" />
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Name</label>
+                <input type="text" value={char.name}
+                  onChange={e => setChar(p => ({...p, name: e.target.value, id: p.id || e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-')}))}
+                  className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
+                  placeholder="Character name" />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Description</label>
+                <input type="text" value={char.description}
+                  onChange={e => setChar(p => ({...p, description: e.target.value}))}
+                  className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
+                  placeholder="Short description" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Franchise</label>
+                  <select value={char.franchise}
+                    onChange={e => setChar(p => ({...p, franchise: e.target.value}))}
+                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
+                    {franchises.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Voice</label>
+                  <select value={char.voiceName}
+                    onChange={e => setChar(p => ({...p, voiceName: e.target.value}))}
+                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
+                    {VOICE_OPTIONS.map(v => (
+                      <option key={v.value} value={v.value}>{v.label} · {v.gender}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Greeting</label>
+                <input type="text" value={char.greeting}
+                  onChange={e => setChar(p => ({...p, greeting: e.target.value}))}
+                  className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
+                  placeholder="What they say when they pick up" />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">System Prompt</label>
+                <textarea value={char.systemPrompt}
+                  onChange={e => setChar(p => ({...p, systemPrompt: e.target.value}))}
+                  rows={4}
+                  className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all resize-none"
+                  placeholder="You are [character]. You speak like..." />
+              </div>
+
+              <div className="flex gap-3 mt-2">
+                <button onClick={() => onSave(char)} disabled={saving || !char.name}
+                  className="flex-1 bg-[#4285F4] hover:bg-[#3B78DB] disabled:opacity-50 text-white rounded-xl py-3.5 font-bold transition-all active:scale-[0.97]">
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                {char.id && char.isCustom && (
+                  <button onClick={() => onDelete(char.id)}
+                    className="bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl px-5 py-3.5 font-bold transition-all active:scale-[0.97]">
+                    Delete
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
