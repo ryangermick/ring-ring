@@ -786,6 +786,7 @@ export default function App() {
         });
         await session.connect();
         sessionRef.current = session;
+        setDebugPrompt(session.getSystemPrompt());
       } catch (err) {
         console.error('Call failed:', err);
         setCallState('error');
@@ -1187,6 +1188,17 @@ export default function App() {
               </svg>
             </button>
           </div>
+
+          {/* AI disclaimer */}
+          <p className="text-[11px] text-slate-300 mt-4 text-center">AI-powered voice • Characters are fictional parodies</p>
+
+          {/* Debug: show system prompt */}
+          {settings.debug_mode && debugPrompt && (
+            <details className="mt-4 w-full">
+              <summary className="text-[11px] text-slate-400 cursor-pointer font-semibold">System Prompt</summary>
+              <pre className="mt-2 text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 whitespace-pre-wrap break-words max-h-60 overflow-y-auto">{debugPrompt}</pre>
+            </details>
+          )}
         </div>
       </div>
     );
@@ -1208,32 +1220,30 @@ export default function App() {
                 if (!char) return null;
                 return (
                   <div key={rec.id} className="relative group">
-                    <button onClick={() => {
-                      setViewingTranscript(rec);
-                      loadTranscript(rec.id);
-                      setScreen('transcript');
-                    }} className="bg-white rounded-2xl p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-shadow text-left w-full">
-                      <CharAvatar src={char.image} alt={char.name} size="md" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-[#1A1A2E]">{char.name}</p>
-                        <p className="text-[13px] text-slate-400 mt-0.5">
-                          {new Date(rec.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm text-slate-400">{fmt(rec.duration_seconds || 0)}</span>
-                        <button onClick={(e) => { e.stopPropagation(); startCall(char); }}
-                          className="w-9 h-9 bg-[#34A853] hover:bg-[#2d9249] rounded-full flex items-center justify-center shadow-sm transition-all active:scale-90"
+                    <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+                      {/* Tap avatar/name area to view transcript */}
+                      <button onClick={() => { setViewingTranscript(rec); loadTranscript(rec.id); setScreen('transcript'); }}
+                        className="flex items-center gap-4 flex-1 min-w-0 text-left">
+                        <CharAvatar src={char.image} alt={char.name} size="md" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[#1A1A2E]">{char.name}</p>
+                          <p className="text-[13px] text-slate-400 mt-0.5">
+                            {new Date(rec.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </button>
+                      {/* Right side: duration, call, delete */}
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <span className="font-mono text-xs text-slate-300">{fmt(rec.duration_seconds || 0)}</span>
+                        <button onClick={() => startCall(char)}
+                          className="w-8 h-8 bg-[#34A853] hover:bg-[#2d9249] rounded-full flex items-center justify-center transition-all active:scale-90"
                           title={`Call ${char.name}`}>
-                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
                           </svg>
                         </button>
-                        <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
                       </div>
-                    </button>
+                    </div>
                     {confirmingDeleteId === rec.id ? (
                       <div className="absolute -right-2 -top-2 flex gap-1 z-10">
                         <button onClick={(e) => { e.stopPropagation(); deleteConversation(rec.id); setConfirmingDeleteId(null); }}
@@ -1472,6 +1482,7 @@ export default function App() {
       { key: 'sound_effects', label: 'Sound Effects', desc: 'Play ring sound on calls', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg> },
       { key: 'auto_save_transcripts', label: 'Auto-save Transcripts', desc: 'Save call transcripts automatically', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg> },
       { key: 'call_timer_visible', label: 'Call Timer Visible', desc: 'Show timer during calls', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+      { key: 'debug_mode', label: 'Debug Mode', desc: 'Show system prompt during calls', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg> },
     ];
     return (
       <div className="min-h-dvh bg-[#FFFBF5]">
