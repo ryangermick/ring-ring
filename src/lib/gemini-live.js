@@ -64,7 +64,9 @@ export class GeminiLiveSession {
                     voiceName: this.character.voiceName || 'Kore'
                   }
                 }
-              }
+              },
+              outputAudioTranscription: {},
+              inputAudioTranscription: {},
             },
             systemInstruction: {
               parts: [{ text: this.character.systemPrompt }]
@@ -117,10 +119,17 @@ export class GeminiLiveSession {
               if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
                 this._queueAudio(part.inlineData.data);
               }
-              if (part.text) {
-                this.onTranscript?.('character', part.text);
-              }
+              // Ignore part.text — that's internal thinking/reasoning, not spoken words
             }
+          }
+
+          // Capture actual spoken transcription (what the user hears)
+          if (serverContent.outputTranscription?.text) {
+            this.onTranscript?.('character', serverContent.outputTranscription.text);
+          }
+          // Capture user's spoken words
+          if (serverContent.inputTranscription?.text) {
+            this.onTranscript?.('user', serverContent.inputTranscription.text);
           }
         }
       };
