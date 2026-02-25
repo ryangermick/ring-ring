@@ -1220,6 +1220,13 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="font-mono text-sm text-slate-400">{fmt(rec.duration_seconds || 0)}</span>
+                        <button onClick={(e) => { e.stopPropagation(); startCall(char); }}
+                          className="w-9 h-9 bg-[#34A853] hover:bg-[#2d9249] rounded-full flex items-center justify-center shadow-sm transition-all active:scale-90"
+                          title={`Call ${char.name}`}>
+                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                          </svg>
+                        </button>
                         <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                         </svg>
