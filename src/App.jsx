@@ -258,9 +258,9 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
       // Auto-generate image in background
       setGeneratingImage(true);
       try {
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        const imgKey = import.meta.env.VITE_GEMINI_IMAGE_KEY || import.meta.env.VITE_GEMINI_API_KEY;
         const imgPrompt = `Cute friendly cartoon character: ${charName}${charDesc ? ' - ' + charDesc : ''}${charFranchise !== 'custom' ? ' from the ' + charFranchise.replace(/-/g, ' ') + ' franchise' : ''}. Watercolor cartoon illustration style, warm soft colors, friendly expression, kid-friendly, bold outlines, soft watercolor textures like a children's storybook, pure white background, portrait upper body centered.`;
-        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${imgKey}`, {
           method: 'POST',headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: [{ text: imgPrompt }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } })
         });
@@ -313,9 +313,9 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
     if (!char.name) return alert('Add a name first');
     setGeneratingImage(true);
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const imgKey = import.meta.env.VITE_GEMINI_IMAGE_KEY || import.meta.env.VITE_GEMINI_API_KEY;
       const prompt = `Cute friendly cartoon character: ${char.name}${char.description ? ' - ' + char.description : ''}${char.franchise && char.franchise !== 'custom' ? ' from the ' + char.franchise.replace(/-/g, ' ') + ' franchise' : ''}. Watercolor cartoon illustration style, warm soft colors, friendly expression, kid-friendly, bold outlines, soft watercolor textures like a children's storybook, pure white background, portrait upper body centered.`;
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${imgKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
