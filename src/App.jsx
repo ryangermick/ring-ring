@@ -706,7 +706,14 @@ export default function App() {
             }
           },
           onTranscript: (role, text) => {
-            transcriptRef.current.push({ role, text, ts: Date.now() });
+            const arr = transcriptRef.current;
+            const last = arr[arr.length - 1];
+            if (last && last.role === role) {
+              // Accumulate into the same turn
+              last.text += text;
+            } else {
+              arr.push({ role, text, ts: Date.now() });
+            }
           },
           onInputLevel: setInputLevel,
           onOutputLevel: setOutputLevel,
