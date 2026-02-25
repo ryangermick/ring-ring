@@ -171,7 +171,7 @@ const CharAvatar = ({ src, alt, size = 'md', className = '' }) => {
   };
   return (
     <div className={`${sizes[size]} rounded-full overflow-hidden bg-white relative shrink-0 ${className}`}>
-      <img src={src} alt={alt} className="absolute inset-0 w-[115%] h-[115%] max-w-none -ml-[7.5%] -mt-[7.5%] object-cover" />
+      <img src={src} alt={alt} className="absolute inset-0 w-full h-full object-cover object-[50%_30%]" />
     </div>
   );
 };
@@ -329,26 +329,39 @@ export default function App() {
 
     if (dbRecordIdRef.current) {
       try {
-        await supabase.from('conversations').update({
-          duration_seconds: duration,
-          ended_at: new Date().toISOString(),
-          transcript: transcriptRef.current,
-        }).eq('id', dbRecordIdRef.current);
+        // Don't save 0-duration calls — just delete the record
+        if (duration === 0) {
+          await supabase.from('conversations').delete().eq('id', dbRecordIdRef.current);
+        } else {
+          await supabase.from('conversations').update({
+            duration_seconds: duration,
+            ended_at: new Date().toISOString(),
+            transcript: transcriptRef.current,
+          }).eq('id', dbRecordIdRef.current);
 
-        if (transcriptRef.current.length > 0) {
-          await supabase.from('messages').insert(
-            transcriptRef.current.map(t => ({
-              conversation_id: dbRecordIdRef.current,
-              role: t.role === 'character' ? 'character' : 'user',
-              content: t.text
-            }))
+          if (transcriptRef.current.length > 0) {
+            await supabase.from('messages').insert(
+              transcriptRef.current.map(t => ({
+                conversation_id: dbRecordIdRef.current,
+                role: t.role === 'character' ? 'character' : 'user',
+                content: t.text
+              }))
           );
+          }
         }
       } catch (err) { console.error('Save failed:', err); }
     }
 
     setScreen('shelf');
     setActiveCharacter(null);
+  };
+
+  const deleteConversation = async (id) => {
+    try {
+      await supabase.from('messages').delete().eq('conversation_id', id);
+      await supabase.from('conversations').delete().eq('id', id);
+      setHistory(prev => prev.filter(r => r.id !== id));
+    } catch (err) { console.error('Delete failed:', err); }
   };
 
   const loadTranscript = async (conversationId) => {
@@ -441,7 +454,7 @@ export default function App() {
               <button onClick={async () => {
                   setScreen('history');
                   const { data } = await supabase.from('conversations').select('*')
-                    .eq('user_id', user.id).order('started_at', { ascending: false });
+                    .eq('user_id', user.id).gt('duration_seconds', 0).order('started_at', { ascending: false });
                   setHistory(data || []);
                 }}
                 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 hover:text-[#4285F4] transition-colors">
@@ -491,25 +504,38 @@ export default function App() {
             );
           })}
 
-          {/* Custom characters section */}
-          {characters.some(c => c.isCustom) && (
-            <section className="mt-14 sm:mt-20">
-              <h2 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-7">Custom</h2>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-5 gap-y-8 sm:gap-x-7 sm:gap-y-10">
-                {characters.filter(c => c.isCustom).map(char => (
-                  <button key={char.id} onClick={() => startCall(char)}
-                    className="group flex flex-col items-center gap-3 outline-none active:scale-[0.93] transition-transform duration-150">
-                    <div className="shadow-md group-hover:shadow-xl group-hover:scale-[1.05] transition-all duration-200 rounded-full">
-                      <CharAvatar src={char.image} alt={char.name} size="lg" />
-                    </div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-500 group-hover:text-[#4285F4] transition-colors text-center leading-tight">
-                      {char.name}
-                    </span>
-                  </button>
+          {/* Custom franchise sections + ungrouped custom characters */}
+          {(() => {
+            const knownIds = franchises.map(f => f.id);
+            const customChars = characters.filter(c => !knownIds.includes(c.franchise));
+            // Group by franchise name
+            const groups = {};
+            customChars.forEach(c => {
+              const key = c.franchise || 'custom';
+              if (!groups[key]) groups[key] = [];
+              groups[key].push(c);
+            });
+            return Object.entries(groups).map(([key, chars]) => (
+              <section key={key} className="mt-14 sm:mt-20">
+                <h2 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-7">
+                  {key === 'custom' ? 'Custom' : key.replace(/-/g, ' ')}
+                </h2>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-5 gap-y-8 sm:gap-x-7 sm:gap-y-10">
+                  {chars.map(char => (
+                    <button key={char.id} onClick={() => startCall(char)}
+                      className="group flex flex-col items-center gap-3 outline-none active:scale-[0.93] transition-transform duration-150">
+                      <div className="shadow-md group-hover:shadow-xl group-hover:scale-[1.05] transition-all duration-200 rounded-full">
+                        <CharAvatar src={char.image} alt={char.name} size="lg" />
+                      </div>
+                      <span className="text-xs sm:text-sm font-bold text-slate-500 group-hover:text-[#4285F4] transition-colors text-center leading-tight">
+                        {char.name}
+                      </span>
+                    </button>
                 ))}
               </div>
             </section>
-          )}
+          ));
+          })()}
         </main>
       </div>
     );
@@ -557,7 +583,7 @@ export default function App() {
               ${!speaking && !listening && !ringing && !hasError ? 'ring-2 ring-white/10' : ''}
             `}>
               <img src={activeCharacter.image} alt={activeCharacter.name}
-                className="absolute inset-0 w-[115%] h-[115%] max-w-none -ml-[7.5%] -mt-[7.5%] object-cover" />
+                className="absolute inset-0 w-full h-full object-cover object-[50%_30%]" />
             </div>
           </div>
 
@@ -609,29 +635,39 @@ export default function App() {
             <p className="text-center text-slate-400 font-semibold mt-20">No calls yet — tap a character to start!</p>
           ) : (
             <div className="flex flex-col gap-3">
-              {history.map(rec => {
+              {history.filter(rec => rec.duration_seconds > 0).map(rec => {
                 const char = characters.find(c => c.id === rec.character_id);
                 if (!char) return null;
                 return (
-                  <button key={rec.id} onClick={() => {
-                    setViewingTranscript(rec);
-                    loadTranscript(rec.id);
-                    setScreen('transcript');
-                  }} className="bg-white rounded-2xl p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-shadow text-left w-full">
-                    <CharAvatar src={char.image} alt={char.name} size="md" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[#1A1A2E]">{char.name}</p>
-                      <p className="text-[13px] text-slate-400 mt-0.5">
-                        {new Date(rec.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm text-slate-400">{fmt(rec.duration_seconds || 0)}</span>
-                      <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  <div key={rec.id} className="relative group">
+                    <button onClick={() => {
+                      setViewingTranscript(rec);
+                      loadTranscript(rec.id);
+                      setScreen('transcript');
+                    }} className="bg-white rounded-2xl p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-shadow text-left w-full">
+                      <CharAvatar src={char.image} alt={char.name} size="md" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-[#1A1A2E]">{char.name}</p>
+                        <p className="text-[13px] text-slate-400 mt-0.5">
+                          {new Date(rec.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm text-slate-400">{fmt(rec.duration_seconds || 0)}</span>
+                        <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (confirm('Delete this call?')) deleteConversation(rec.id); }}
+                      className="absolute -right-2 -top-2 bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-300 text-slate-300 hover:text-rose-500 rounded-full w-7 h-7 flex items-center justify-center shadow-sm transition-all active:scale-90 z-10"
+                      title="Delete">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -730,28 +766,40 @@ export default function App() {
             );
           })}
 
-          {/* Custom characters section */}
-          {characters.some(c => c.isCustom) && (
-            <div className="mb-10">
-              <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Custom</h3>
-              <div className="flex flex-col gap-2">
-                {characters.filter(c => c.isCustom).map(char => (
-                  <button key={char.id} onClick={() => setEditingChar({...char})}
-                    className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow text-left w-full">
-                    <CharAvatar src={char.image} alt={char.name} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[#1A1A2E] text-sm">{char.name}</p>
-                      <p className="text-xs text-slate-400 truncate">{char.description}</p>
-                    </div>
-                    <span className="text-xs text-slate-300 font-mono">{char.voiceName}</span>
-                    <svg className="w-4 h-4 text-slate-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                ))}
+          {/* Custom franchise sections */}
+          {(() => {
+            const knownIds = franchises.map(f => f.id);
+            const customChars = characters.filter(c => !knownIds.includes(c.franchise));
+            const groups = {};
+            customChars.forEach(c => {
+              const key = c.franchise || 'custom';
+              if (!groups[key]) groups[key] = [];
+              groups[key].push(c);
+            });
+            return Object.entries(groups).map(([key, chars]) => (
+              <div key={key} className="mb-10">
+                <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                  {key === 'custom' ? 'Custom' : key.replace(/-/g, ' ')}
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {chars.map(char => (
+                    <button key={char.id} onClick={() => setEditingChar({...char})}
+                      className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow text-left w-full">
+                      <CharAvatar src={char.image} alt={char.name} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-[#1A1A2E] text-sm">{char.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{char.description}</p>
+                      </div>
+                      <span className="text-xs text-slate-300 font-mono">{char.voiceName}</span>
+                      <svg className="w-4 h-4 text-slate-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            ));
+          })()}
         </main>
 
         {/* ═══ Character Editor Modal ═══ */}
@@ -776,6 +824,12 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [uploading, setUploading] = useState(false);
   const [showDetails, setShowDetails] = useState(!!char.name);
+  const [customFranchise, setCustomFranchise] = useState(
+    char.franchise && !franchises.find(f => f.id === char.franchise) && char.franchise !== 'custom' ? char.franchise : ''
+  );
+  const [showNewFranchise, setShowNewFranchise] = useState(
+    char.franchise && !franchises.find(f => f.id === char.franchise) && char.franchise !== 'custom'
+  );
   const fileInputRef = useRef(null);
 
   const handleGenerate = async () => {
@@ -844,6 +898,42 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
           {!char.name && (
             <div className="bg-gradient-to-br from-teal-50 to-sky-50 rounded-2xl p-5 border border-teal-100">
               <label className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-2 block">✨ Describe a character</label>
+
+              {/* Franchise selector on auto-fill screen */}
+              <div className="mb-3">
+                <div className="flex flex-wrap gap-2">
+                  {franchises.map(f => (
+                    <button key={f.id} type="button"
+                      onClick={() => { setChar(p => ({...p, franchise: f.id})); setShowNewFranchise(false); setCustomFranchise(''); }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                        char.franchise === f.id && !showNewFranchise
+                          ? 'bg-teal-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-teal-300'
+                      }`}>
+                      {f.emoji} {f.name}
+                    </button>
+                  ))}
+                  <button type="button"
+                    onClick={() => { setShowNewFranchise(true); setChar(p => ({...p, franchise: customFranchise || 'custom'})); }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      showNewFranchise
+                        ? 'bg-teal-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-teal-300'
+                    }`}>
+                    + New
+                  </button>
+                </div>
+                {showNewFranchise && (
+                  <input type="text" value={customFranchise}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setCustomFranchise(val);
+                      setChar(p => ({...p, franchise: val.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'custom'}));
+                    }}
+                    className="mt-2 w-full bg-white rounded-xl px-4 py-2.5 text-[#1A1A2E] font-medium border border-teal-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 outline-none transition-all text-sm"
+                    placeholder="e.g. DC Comics, Sesame Street, Pixar..."
+                    autoFocus />
+                )}
+              </div>
+
               <textarea
                 value={aiPrompt}
                 onChange={e => setAiPrompt(e.target.value)}
@@ -875,7 +965,7 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 relative shrink-0 border-2 border-dashed border-slate-200">
                     {char.image ? (
-                      <img src={char.image} alt="" className="absolute inset-0 w-[115%] h-[115%] max-w-none -ml-[7.5%] -mt-[7.5%] object-cover" />
+                      <img src={char.image} alt="" className="absolute inset-0 w-full h-full object-cover object-[50%_30%]" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-300">
                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -917,12 +1007,32 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Franchise</label>
-                  <select value={char.franchise}
-                    onChange={e => setChar(p => ({...p, franchise: e.target.value}))}
+                  <select value={showNewFranchise ? '__new__' : char.franchise}
+                    onChange={e => {
+                      if (e.target.value === '__new__') {
+                        setShowNewFranchise(true);
+                        setChar(p => ({...p, franchise: customFranchise || 'custom'}));
+                      } else {
+                        setShowNewFranchise(false);
+                        setCustomFranchise('');
+                        setChar(p => ({...p, franchise: e.target.value}));
+                      }
+                    }}
                     className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
                     {franchises.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    <option value="custom">Custom</option>
+                    <option value="__new__">+ New...</option>
                   </select>
+                  {showNewFranchise && (
+                    <input type="text" value={customFranchise}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setCustomFranchise(val);
+                        setChar(p => ({...p, franchise: val.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'custom'}));
+                      }}
+                      className="mt-2 w-full bg-white rounded-xl px-3 py-2.5 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all text-sm"
+                      placeholder="e.g. DC Comics"
+                      autoFocus />
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Voice</label>
