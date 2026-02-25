@@ -244,6 +244,10 @@ export class GeminiLiveSession {
 
     if (!this.isPlaying) {
       this.onStateChange?.('speaking');
+      // Start output volume monitoring if not already running
+      if (!this._outputAnimFrame) {
+        this._monitorOutputVolume();
+      }
     }
     this.isPlaying = true;
 
