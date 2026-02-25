@@ -1020,8 +1020,8 @@ export default function App() {
               <select value={settings.default_voice}
                 onChange={e => setSettings(p => ({ ...p, default_voice: e.target.value }))}
                 className="w-full bg-[#FFFBF5] rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
-                {['Puck', 'Fenrir', 'Charon', 'Orus', 'Aoede', 'Kore'].map(v => (
-                  <option key={v} value={v}>{v}</option>
+                {VOICE_OPTIONS.map(v => (
+                  <option key={v.value} value={v.value}>{v.label} — {v.desc}</option>
                 ))}
               </select>
             </div>
@@ -1285,7 +1285,7 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
                     onChange={e => setChar(p => ({...p, voiceName: e.target.value}))}
                     className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
                     {VOICE_OPTIONS.map(v => (
-                      <option key={v.value} value={v.value}>{v.label} · {v.gender}</option>
+                      <option key={v.value} value={v.value}>{v.label} — {v.desc}</option>
                     ))}
                   </select>
                 </div>

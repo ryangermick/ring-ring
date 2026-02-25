@@ -2,7 +2,7 @@ const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 export async function generateCharacter(description) {
   const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -19,13 +19,8 @@ Generate a complete character profile as JSON with these fields:
 - greeting: What they say when they pick up the phone (fun, in-character, 1-2 sentences)
 - systemPrompt: Instructions for the AI to roleplay as this character during a voice call with a young child. Include their personality, catchphrases, and speaking style. End with "Keep responses short — 1-3 sentences."
 - voiceName: Pick the most appropriate voice from these options:
-  - "Puck" (male, youthful/energetic)
-  - "Fenrir" (male, confident/warm)
-  - "Charon" (male, deep/commanding)
-  - "Orus" (male, dignified/calm)
-  - "Aoede" (female, cheerful/bright)
-  - "Kore" (female, elegant/warm)
-- franchise: Pick the best fit: "paw-patrol", "marvel", "disney", or "custom"
+  "Achernar" (Soft), "Achird" (Friendly), "Algenib" (Gravelly), "Algieba" (Smooth), "Alnilam" (Firm), "Aoede" (Breezy), "Autonoe" (Bright), "Callirrhoe" (Easy-going), "Charon" (Informative), "Despina" (Smooth), "Enceladus" (Breathy), "Erinome" (Clear), "Fenrir" (Excitable), "Gacrux" (Mature), "Iapetus" (Clear), "Kore" (Firm), "Laomedeia" (Upbeat), "Leda" (Youthful), "Orus" (Firm), "Puck" (Upbeat), "Pulcherrima" (Forward), "Rasalgethi" (Informative), "Sadachbia" (Lively), "Sadaltager" (Knowledgeable), "Schedar" (Even), "Sulafat" (Warm), "Umbriel" (Easy-going), "Vindemiatrix" (Gentle), "Zephyr" (Bright), "Zubenelgenubi" (Casual)
+- franchise: Pick the best fit: "paw-patrol", "marvel", "disney", "sesame-street", or "custom"
 
 Respond with ONLY valid JSON, no markdown or explanation.`
           }]
