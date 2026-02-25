@@ -503,6 +503,16 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [characters, setCharacters] = useState(defaultCharacters);
   const [error, setError] = useState(null);
+  const [favorites, setFavorites] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ring_favorites') || '[]'); } catch { return []; }
+  });
+  const toggleFavorite = (charId) => {
+    setFavorites(prev => {
+      const next = prev.includes(charId) ? prev.filter(id => id !== charId) : [...prev, charId];
+      localStorage.setItem('ring_favorites', JSON.stringify(next));
+      return next;
+    });
+  };
 
   // URL slug sync
   const screenToPath = { shelf: '/', history: '/history', characters: '/characters', profile: '/profile', settings: '/settings', login: '/login', call: '/call', transcript: '/transcript' };
@@ -771,8 +781,8 @@ export default function App() {
       } catch (err) { console.error('Save failed:', err); }
     }
 
-    setScreen('shelf');
     setActiveCharacter(null);
+    return; // caller sets screen
   };
 
   const deleteConversation = async (id) => {
@@ -966,6 +976,33 @@ export default function App() {
         </header>
 
         <main className="max-w-4xl mx-auto px-8 sm:px-12 pt-10 pb-24">
+          {/* Favorites section */}
+          {favorites.length > 0 && (() => {
+            const favChars = favorites.map(id => characters.find(c => c.id === id)).filter(Boolean);
+            if (!favChars.length) return null;
+            return (
+              <section className="mb-14 sm:mb-20">
+                <h2 className="text-[13px] font-bold uppercase tracking-widest text-rose-400 mb-7 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                  Favorites
+                </h2>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-5 gap-y-8 sm:gap-x-7 sm:gap-y-10">
+                  {favChars.map(char => (
+                    <button key={char.id} onClick={() => startCall(char)}
+                      className="group flex flex-col items-center gap-3 outline-none active:scale-[0.93] transition-transform duration-150">
+                      <div className="shadow-md group-hover:shadow-xl group-hover:scale-[1.05] transition-all duration-200 rounded-full">
+                        <CharAvatar src={char.image} alt={char.name} size="lg" />
+                      </div>
+                      <span className="text-xs sm:text-sm font-bold text-slate-500 group-hover:text-[#4285F4] transition-colors text-center leading-tight">
+                        {char.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
+
           {franchises.map((franchise, idx) => {
             const chars = characters.filter(c => c.franchise === franchise.id);
             if (!chars.length) return null;
@@ -1043,7 +1080,7 @@ export default function App() {
 
         {/* Back button */}
         <div className="absolute top-0 left-0 z-20 pt-14 pl-6 sm:pt-16 sm:pl-8">
-          <button onClick={handleHangUp} className="flex items-center gap-2 text-white/40 hover:text-white/70 active:scale-95 transition-all">
+          <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }} className="flex items-center gap-2 text-white/40 hover:text-white/70 active:scale-95 transition-all">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
@@ -1053,7 +1090,7 @@ export default function App() {
 
         {/* Edit character button */}
         <div className="absolute top-0 right-0 z-20 pt-14 pr-6 sm:pt-16 sm:pr-8">
-          <button onClick={() => { handleHangUp(); setEditingChar({...activeCharacter}); setScreen('characters'); }} className="flex items-center gap-1.5 text-white/40 hover:text-white/70 active:scale-95 transition-all">
+          <button onClick={async () => { const char = {...activeCharacter}; await handleHangUp(); setEditingChar(char); setScreen('characters'); }} className="flex items-center gap-1.5 text-white/40 hover:text-white/70 active:scale-95 transition-all">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
@@ -1084,9 +1121,18 @@ export default function App() {
             </div>
           </div>
 
-          <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-3">
-            {activeCharacter.name}
-          </h2>
+          <div className="flex items-center gap-3 mb-3">
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              {activeCharacter.name}
+            </h2>
+            <button onClick={() => toggleFavorite(activeCharacter.id)} className="text-white/50 hover:text-white transition-all active:scale-90">
+              {favorites.includes(activeCharacter.id) ? (
+                <svg className="w-7 h-7 text-rose-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              ) : (
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+              )}
+            </button>
+          </div>
 
           {/* Audio visualizer — canvas-based, reacts to real audio levels */}
           <div className="w-full h-20 mb-4">
@@ -1110,7 +1156,7 @@ export default function App() {
         </div>
 
         <div className="pb-12 sm:pb-16 pt-8 shrink-0">
-          <button onClick={handleHangUp}
+          <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }}
             className="w-[72px] h-[72px] bg-[#EA4335] rounded-full flex items-center justify-center shadow-xl shadow-[#EA4335]/30 active:scale-90 hover:bg-[#D33828] transition-all duration-200">
             <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.73-1.68-1.36-2.66-1.85a.994.994 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
