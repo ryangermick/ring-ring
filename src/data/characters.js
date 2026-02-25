@@ -41,35 +41,6 @@ export const franchises = [
   { id: 'sesame-street', name: 'Sesame Street', emoji: '🧸', color: 'bg-yellow-50' },
 ];
 
-export const VOICE_OPTIONS = [
-  { value: 'Achernar', label: 'Achernar', desc: 'Soft' },
-  { value: 'Achird', label: 'Achird', desc: 'Friendly' },
-  { value: 'Algenib', label: 'Algenib', desc: 'Gravelly' },
-  { value: 'Algieba', label: 'Algieba', desc: 'Smooth' },
-  { value: 'Alnilam', label: 'Alnilam', desc: 'Firm' },
-  { value: 'Aoede', label: 'Aoede', desc: 'Breezy' },
-  { value: 'Autonoe', label: 'Autonoe', desc: 'Bright' },
-  { value: 'Callirrhoe', label: 'Callirrhoe', desc: 'Easy-going' },
-  { value: 'Charon', label: 'Charon', desc: 'Informative' },
-  { value: 'Despina', label: 'Despina', desc: 'Smooth' },
-  { value: 'Enceladus', label: 'Enceladus', desc: 'Breathy' },
-  { value: 'Erinome', label: 'Erinome', desc: 'Clear' },
-  { value: 'Fenrir', label: 'Fenrir', desc: 'Excitable' },
-  { value: 'Gacrux', label: 'Gacrux', desc: 'Mature' },
-  { value: 'Iapetus', label: 'Iapetus', desc: 'Clear' },
-  { value: 'Kore', label: 'Kore', desc: 'Firm' },
-  { value: 'Laomedeia', label: 'Laomedeia', desc: 'Upbeat' },
-  { value: 'Leda', label: 'Leda', desc: 'Youthful' },
-  { value: 'Orus', label: 'Orus', desc: 'Firm' },
-  { value: 'Puck', label: 'Puck', desc: 'Upbeat' },
-  { value: 'Pulcherrima', label: 'Pulcherrima', desc: 'Forward' },
-  { value: 'Rasalgethi', label: 'Rasalgethi', desc: 'Informative' },
-  { value: 'Sadachbia', label: 'Sadachbia', desc: 'Lively' },
-  { value: 'Sadaltager', label: 'Sadaltager', desc: 'Knowledgeable' },
-  { value: 'Schedar', label: 'Schedar', desc: 'Even' },
-  { value: 'Sulafat', label: 'Sulafat', desc: 'Warm' },
-  { value: 'Umbriel', label: 'Umbriel', desc: 'Easy-going' },
-  { value: 'Vindemiatrix', label: 'Vindemiatrix', desc: 'Gentle' },
-  { value: 'Zephyr', label: 'Zephyr', desc: 'Bright' },
-  { value: 'Zubenelgenubi', label: 'Zubenelgenubi', desc: 'Casual' },
-];
+
+// Voice options moved to voices.js
+export { VOICE_OPTIONS } from './voices.js';

@@ -193,8 +193,40 @@ const BackHeader = ({ label, onBack, right }) => (
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [screen, setScreen] = useState('login');
+  const [screen, setScreenRaw] = useState('login');
   const [activeCharacter, setActiveCharacter] = useState(null);
+
+  // URL slug sync
+  const screenToPath = { shelf: '/', history: '/history', characters: '/characters', profile: '/profile', settings: '/settings', login: '/login', call: '/call', transcript: '/transcript' };
+  const pathToScreen = Object.fromEntries(Object.entries(screenToPath).map(([k, v]) => [v, k]));
+
+  const setScreen = useCallback((s, charSlug) => {
+    setScreenRaw(s);
+    if (s === 'call' && charSlug) {
+      window.history.pushState(null, '', `/${charSlug}`);
+    } else {
+      const path = screenToPath[s] || '/';
+      if (window.location.pathname !== path) window.history.pushState(null, '', path);
+    }
+  }, []);
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const onPop = () => {
+      const path = window.location.pathname;
+      const s = pathToScreen[path];
+      if (s) { setScreenRaw(s); }
+      else if (path !== '/login' && path !== '/') {
+        // Could be a character slug like /woody
+        const slug = path.slice(1);
+        const char = characters.find(c => c.id === slug);
+        if (char && user) { startCall(char); }
+        else { setScreenRaw('shelf'); }
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [characters, user]);
   const [callState, setCallState] = useState('ringing');
   const [duration, setDuration] = useState(0);
   const [history, setHistory] = useState([]);
@@ -305,13 +337,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const restoreScreen = () => {
+      const path = window.location.pathname;
+      const mapped = pathToScreen[path];
+      if (mapped && mapped !== 'login') setScreenRaw(mapped);
+      else setScreenRaw('shelf');
+    };
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) { setScreen('shelf'); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
+      if (session?.user) { restoreScreen(); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) { setScreen('shelf'); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
+      if (session?.user) { restoreScreen(); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
     });
     return () => subscription.unsubscribe();
   }, [loadCharacters, loadProfile, loadSettings]);
@@ -337,7 +375,7 @@ export default function App() {
 
   const startCall = async (character) => {
     setActiveCharacter(character);
-    setScreen('call');
+    setScreen('call', character.id);
     setCallState('ringing');
     setDuration(0);
     setError(null);
