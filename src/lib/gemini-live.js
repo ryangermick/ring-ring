@@ -76,6 +76,10 @@ export class GeminiLiveSession {
     return prompt;
   }
 
+  getSystemPrompt() {
+    return this._buildSystemPrompt();
+  }
+
   async connect() {
     this.onStateChange?.('connecting');
 

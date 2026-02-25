@@ -566,7 +566,7 @@ export default function App() {
   // Settings state
   const [settings, setSettings] = useState({
     sound_effects: true, auto_save_transcripts: true,
-    default_voice: 'Puck', call_timer_visible: true,
+    default_voice: 'Puck', call_timer_visible: true, debug_mode: false,
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -601,6 +601,7 @@ export default function App() {
   const [charSaving, setCharSaving] = useState(false);
 
   const sessionRef = useRef(null);
+  const [debugPrompt, setDebugPrompt] = useState(null);
   const timerRef = useRef(null);
   const transcriptRef = useRef([]);
   const dbRecordIdRef = useRef(null);
@@ -659,7 +660,7 @@ export default function App() {
       if (data) {
         const s = {
           sound_effects: data.sound_effects ?? true, auto_save_transcripts: data.auto_save_transcripts ?? true,
-          default_voice: data.default_voice || 'Puck', call_timer_visible: data.call_timer_visible ?? true,
+          default_voice: data.default_voice || 'Puck', call_timer_visible: data.call_timer_visible ?? true, debug_mode: data.debug_mode ?? false,
         };
         setSettings(s);
         localStorage.setItem('ring_settings', JSON.stringify(s));
@@ -817,7 +818,8 @@ export default function App() {
               transcriptRef.current.map(t => ({
                 conversation_id: dbRecordIdRef.current,
                 role: t.role === 'character' ? 'character' : 'user',
-                content: t.text
+                content: t.text,
+                created_at: new Date(t.ts).toISOString()
               }))
           );
           }
