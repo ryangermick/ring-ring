@@ -202,9 +202,25 @@ export default function App() {
   const [error, setError] = useState(null);
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
 
-  // Ringing sound
-  useRingSound(callState === 'ringing');
+  // Profile state
+  const [profile, setProfile] = useState({
+    display_name: '', birthdate: '', interests: '', favorite_color: '',
+    favorite_animal: '', favorite_food: '', favorite_movie: '', about_me: '',
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Settings state
+  const [settings, setSettings] = useState({
+    sound_effects: true, auto_save_transcripts: true,
+    default_voice: 'Puck', call_timer_visible: true,
+  });
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+  // Ringing sound (respects settings)
+  useRingSound(callState === 'ringing' && settings.sound_effects);
 
   // Transcript viewer
   const [viewingTranscript, setViewingTranscript] = useState(null);
@@ -244,17 +260,45 @@ export default function App() {
     }
   }, []);
 
+  const loadProfile = useCallback(async (userId) => {
+    try {
+      const { data } = await supabase.from('user_profiles').select('*').eq('user_id', userId).single();
+      if (data) setProfile({
+        display_name: data.display_name || '', birthdate: data.birthdate || '',
+        interests: data.interests || '', favorite_color: data.favorite_color || '',
+        favorite_animal: data.favorite_animal || '', favorite_food: data.favorite_food || '',
+        favorite_movie: data.favorite_movie || '', about_me: data.about_me || '',
+      });
+    } catch (e) { /* no profile yet */ }
+  }, []);
+
+  const loadSettings = useCallback(async (userId) => {
+    try {
+      const cached = localStorage.getItem('ring_settings');
+      if (cached) setSettings(JSON.parse(cached));
+      const { data } = await supabase.from('user_settings').select('*').eq('user_id', userId).single();
+      if (data) {
+        const s = {
+          sound_effects: data.sound_effects ?? true, auto_save_transcripts: data.auto_save_transcripts ?? true,
+          default_voice: data.default_voice || 'Puck', call_timer_visible: data.call_timer_visible ?? true,
+        };
+        setSettings(s);
+        localStorage.setItem('ring_settings', JSON.stringify(s));
+      }
+    } catch (e) { /* no settings yet */ }
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) { setScreen('shelf'); loadCharacters(); }
+      if (session?.user) { setScreen('shelf'); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) { setScreen('shelf'); loadCharacters(); }
+      if (session?.user) { setScreen('shelf'); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
     });
     return () => subscription.unsubscribe();
-  }, [loadCharacters]);
+  }, [loadCharacters, loadProfile, loadSettings]);
 
   useEffect(() => {
     if (['connected', 'listening', 'speaking'].includes(callState)) {
@@ -415,6 +459,53 @@ export default function App() {
     }
   };
 
+  const avatarMenuRef = useRef(null);
+  useEffect(() => {
+    const handler = (e) => {
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target)) setShowAvatarMenu(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      const row = { user_id: user.id, ...profile, updated_at: new Date().toISOString() };
+      const { error } = await supabase.from('user_profiles').upsert(row, { onConflict: 'user_id' });
+      if (error) throw error;
+    } catch (err) { alert('Save failed: ' + err.message); }
+    setProfileSaving(false);
+  };
+
+  const saveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      const row = { user_id: user.id, ...settings, updated_at: new Date().toISOString() };
+      const { error } = await supabase.from('user_settings').upsert(row, { onConflict: 'user_id' });
+      if (error) throw error;
+      localStorage.setItem('ring_settings', JSON.stringify(settings));
+    } catch (err) { alert('Save failed: ' + err.message); }
+    setSettingsSaving(false);
+  };
+
+  const deleteAllData = async () => {
+    try {
+      // Delete messages for user's conversations
+      const { data: convos } = await supabase.from('conversations').select('id').eq('user_id', user.id);
+      if (convos?.length) {
+        const ids = convos.map(c => c.id);
+        await supabase.from('messages').delete().in('conversation_id', ids);
+      }
+      await supabase.from('conversations').delete().eq('user_id', user.id);
+      await supabase.from('user_profiles').delete().eq('user_id', user.id);
+      await supabase.from('user_settings').delete().eq('user_id', user.id);
+      localStorage.removeItem('ring_settings');
+      await supabase.auth.signOut();
+      setScreen('login');
+    } catch (err) { alert('Delete failed: ' + err.message); }
+  };
+
   const fmt = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
   /* ═══════════════════ SIGN IN ═══════════════════ */
@@ -464,16 +555,35 @@ export default function App() {
                 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 hover:text-[#4285F4] transition-colors">
                 Characters
               </button>
-              <button onClick={handleLogout}
-                className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-slate-200 hover:ring-[#4285F4] transition-all">
-                {user?.user_metadata?.avatar_url ? (
-                  <img src={user.user_metadata.avatar_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-[#4285F4] flex items-center justify-center text-white text-sm font-bold">
-                    {user?.email?.charAt(0).toUpperCase() || '?'}
+              <div className="relative" ref={avatarMenuRef}>
+                <button onClick={() => setShowAvatarMenu(p => !p)}
+                  className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-slate-200 hover:ring-[#4285F4] transition-all">
+                  {user?.user_metadata?.avatar_url ? (
+                    <img src={user.user_metadata.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-[#4285F4] flex items-center justify-center text-white text-sm font-bold">
+                      {user?.email?.charAt(0).toUpperCase() || '?'}
+                    </div>
+                  )}
+                </button>
+                {showAvatarMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-[#FFFBF5] rounded-2xl shadow-lg shadow-black/10 border border-slate-100 py-2 z-[60]">
+                    <button onClick={() => { setShowAvatarMenu(false); setScreen('profile'); }}
+                      className="w-full text-left px-5 py-3 text-sm font-semibold text-[#1A1A2E] hover:bg-white/80 transition-colors flex items-center gap-3">
+                      👤 Profile
+                    </button>
+                    <button onClick={() => { setShowAvatarMenu(false); setScreen('settings'); }}
+                      className="w-full text-left px-5 py-3 text-sm font-semibold text-[#1A1A2E] hover:bg-white/80 transition-colors flex items-center gap-3">
+                      ⚙️ Settings
+                    </button>
+                    <div className="mx-4 my-1 h-px bg-slate-100" />
+                    <button onClick={() => { setShowAvatarMenu(false); handleLogout(); }}
+                      className="w-full text-left px-5 py-3 text-sm font-semibold text-rose-500 hover:bg-rose-50 transition-colors flex items-center gap-3">
+                      🚪 Sign Out
+                    </button>
                   </div>
                 )}
-              </button>
+              </div>
             </div>
           </div>
         </header>
@@ -609,7 +719,7 @@ export default function App() {
             )}
           </div>
 
-          <span className="font-mono text-sm tracking-widest text-slate-600">{fmt(duration)}</span>
+          {settings.call_timer_visible && <span className="font-mono text-sm tracking-widest text-slate-600">{fmt(duration)}</span>}
         </div>
 
         <div className="pb-12 sm:pb-16 pt-8 shrink-0">
@@ -811,6 +921,137 @@ export default function App() {
           saving={charSaving}
           user={user}
         />}
+      </div>
+    );
+  }
+
+  /* ═══════════════════ PROFILE SCREEN ═══════════════════ */
+  if (screen === 'profile') {
+    const fields = [
+      { key: 'display_name', label: 'Display Name', type: 'text', placeholder: 'Your name' },
+      { key: 'birthdate', label: 'Birthdate', type: 'date', placeholder: '' },
+      { key: 'interests', label: 'Interests', type: 'text', placeholder: 'e.g. music, hiking, cooking' },
+      { key: 'favorite_color', label: 'Favorite Color', type: 'text', placeholder: 'e.g. Blue' },
+      { key: 'favorite_animal', label: 'Favorite Animal', type: 'text', placeholder: 'e.g. Dog' },
+      { key: 'favorite_food', label: 'Favorite Food', type: 'text', placeholder: 'e.g. Pizza' },
+      { key: 'favorite_movie', label: 'Favorite Movie/Show', type: 'text', placeholder: 'e.g. Spirited Away' },
+    ];
+    return (
+      <div className="min-h-dvh bg-[#FFFBF5]">
+        <GlobalStyles />
+        <BackHeader label="Profile" onBack={() => setScreen('shelf')} />
+        <main className="max-w-lg mx-auto px-8 sm:px-12 pt-8 pb-20">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-16 h-16 rounded-full overflow-hidden ring-2 ring-slate-200 shrink-0">
+              {user?.user_metadata?.avatar_url ? (
+                <img src={user.user_metadata.avatar_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-[#4285F4] flex items-center justify-center text-white text-2xl font-bold">
+                  {user?.email?.charAt(0).toUpperCase() || '?'}
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="font-bold text-[#1A1A2E] text-lg">{profile.display_name || user?.email}</p>
+              <p className="text-sm text-slate-400">{user?.email}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-5">
+            {fields.map(f => (
+              <div key={f.key}>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">{f.label}</label>
+                <input type={f.type} value={profile[f.key]}
+                  onChange={e => setProfile(p => ({ ...p, [f.key]: e.target.value }))}
+                  className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all"
+                  placeholder={f.placeholder} />
+              </div>
+            ))}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">About Me</label>
+              <textarea value={profile.about_me}
+                onChange={e => setProfile(p => ({ ...p, about_me: e.target.value }))}
+                rows={3}
+                className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] focus:ring-2 focus:ring-[#4285F4]/20 outline-none transition-all resize-none"
+                placeholder="A little about yourself…" />
+            </div>
+            <button onClick={saveProfile} disabled={profileSaving}
+              className="w-full bg-[#4285F4] hover:bg-[#3B78DB] disabled:opacity-50 text-white rounded-xl py-3.5 font-bold transition-all active:scale-[0.97] mt-2">
+              {profileSaving ? 'Saving…' : 'Save Profile'}
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  /* ═══════════════════ SETTINGS SCREEN ═══════════════════ */
+  if (screen === 'settings') {
+    const toggles = [
+      { key: 'sound_effects', label: 'Sound Effects', desc: 'Play ring sound on calls' },
+      { key: 'auto_save_transcripts', label: 'Auto-save Transcripts', desc: 'Save call transcripts automatically' },
+      { key: 'call_timer_visible', label: 'Call Timer Visible', desc: 'Show timer during calls' },
+    ];
+    return (
+      <div className="min-h-dvh bg-[#FFFBF5]">
+        <GlobalStyles />
+        <BackHeader label="Settings" onBack={() => setScreen('shelf')} />
+        <main className="max-w-lg mx-auto px-8 sm:px-12 pt-8 pb-20">
+          <div className="flex flex-col gap-5">
+            {toggles.map(t => (
+              <div key={t.key} className="bg-white rounded-2xl p-5 flex items-center justify-between shadow-sm">
+                <div>
+                  <p className="font-bold text-[#1A1A2E]">{t.label}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{t.desc}</p>
+                </div>
+                <button onClick={() => setSettings(p => ({ ...p, [t.key]: !p[t.key] }))}
+                  className={`w-12 h-7 rounded-full transition-colors relative ${settings[t.key] ? 'bg-[#4285F4]' : 'bg-slate-200'}`}>
+                  <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${settings[t.key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+            ))}
+
+            <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block">Default Voice</label>
+              <select value={settings.default_voice}
+                onChange={e => setSettings(p => ({ ...p, default_voice: e.target.value }))}
+                className="w-full bg-[#FFFBF5] rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
+                {['Puck', 'Fenrir', 'Charon', 'Orus', 'Aoede', 'Kore'].map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+
+            <button onClick={saveSettings} disabled={settingsSaving}
+              className="w-full bg-[#4285F4] hover:bg-[#3B78DB] disabled:opacity-50 text-white rounded-xl py-3.5 font-bold transition-all active:scale-[0.97] mt-2">
+              {settingsSaving ? 'Saving…' : 'Save Settings'}
+            </button>
+
+            <div className="mt-8 pt-6 border-t border-slate-100">
+              <h3 className="font-bold text-rose-500 mb-3">Danger Zone</h3>
+              {!deleteConfirm ? (
+                <button onClick={() => setDeleteConfirm(true)}
+                  className="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-3.5 font-bold transition-all active:scale-[0.97]">
+                  Delete All My Data
+                </button>
+              ) : (
+                <div className="bg-rose-50 rounded-2xl p-5 border border-rose-200">
+                  <p className="text-sm text-rose-700 font-semibold mb-4">This will permanently delete all your conversations, messages, profile, and settings. You will be signed out.</p>
+                  <div className="flex gap-3">
+                    <button onClick={deleteAllData}
+                      className="flex-1 bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-3 font-bold transition-all active:scale-[0.97]">
+                      Yes, Delete Everything
+                    </button>
+                    <button onClick={() => setDeleteConfirm(false)}
+                      className="flex-1 bg-white text-slate-500 rounded-xl py-3 font-bold border border-slate-200 hover:border-slate-300 transition-all active:scale-[0.97]">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
