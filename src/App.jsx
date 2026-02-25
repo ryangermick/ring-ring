@@ -193,7 +193,7 @@ const BackHeader = ({ label, onBack, right }) => (
 
 
 /* ═══════════════════ CHARACTER EDITOR MODAL ═══════════════════ */
-function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
+function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, samplingVoice, playVoiceSample }) {
   const [generating, setGenerating] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -589,7 +589,7 @@ export default function App() {
 
   const loadProfile = useCallback(async (userId) => {
     try {
-      const { data } = await supabase.from('user_profiles').select('*').eq('user_id', userId).single();
+      const { data } = await supabase.from('user_profiles').select('*').eq('user_id', userId).maybeSingle();
       if (data) setProfile({
         display_name: data.display_name || '', birthdate: data.birthdate || '',
         interests: data.interests || '', favorite_color: data.favorite_color || '',
@@ -603,7 +603,7 @@ export default function App() {
     try {
       const cached = localStorage.getItem('ring_settings');
       if (cached) setSettings(JSON.parse(cached));
-      const { data } = await supabase.from('user_settings').select('*').eq('user_id', userId).single();
+      const { data } = await supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle();
       if (data) {
         const s = {
           sound_effects: data.sound_effects ?? true, auto_save_transcripts: data.auto_save_transcripts ?? true,
@@ -1256,6 +1256,8 @@ export default function App() {
           onDelete={deleteCharacter}
           saving={charSaving}
           user={user}
+          samplingVoice={samplingVoice}
+          playVoiceSample={playVoiceSample}
         />}
       </div>
     );
