@@ -38,7 +38,9 @@ export class GeminiLiveSession {
     this.onStateChange?.('connecting');
 
     // Set up audio context for playback (24kHz output from Gemini)
+    // Created here but may need resume after user gesture
     this.audioContext = new AudioContext({ sampleRate: 24000 });
+    if (this.audioContext.state === 'suspended') await this.audioContext.resume();
 
     // Output analyser for real-time volume monitoring
     this.outputAnalyser = this.audioContext.createAnalyser();
@@ -53,7 +55,7 @@ export class GeminiLiveSession {
       this.ws.onopen = () => {
         const setupMessage = {
           setup: {
-            model: 'models/gemini-2.0-flash-live-001',
+            model: 'models/gemini-2.5-flash-native-audio-latest',
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: {

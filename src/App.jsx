@@ -106,49 +106,56 @@ function AudioVisualizer({ inputLevel, outputLevel, isActive, isSpeaking }) {
 }
 
 /* ═══════════ Ringing Sound (Web Audio API synthesized phone ring) ═══════════ */
+// ringCtx is created lazily on first user tap (startCall) to satisfy browser autoplay policy
+let _ringCtx = null;
+function getRingCtx() {
+  if (!_ringCtx || _ringCtx.state === 'closed') {
+    _ringCtx = new AudioContext();
+  }
+  if (_ringCtx.state === 'suspended') _ringCtx.resume();
+  return _ringCtx;
+}
+
 function useRingSound(isRinging) {
-  const ctxRef = useRef(null);
   const intervalRef = useRef(null);
 
   useEffect(() => {
     if (!isRinging) {
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      if (ctxRef.current) { ctxRef.current.close(); ctxRef.current = null; }
       return;
     }
 
-    const ctx = new AudioContext();
-    ctxRef.current = ctx;
+    const ctx = getRingCtx();
 
     const playRing = () => {
-      // Classic dual-tone phone ring: 440 Hz + 480 Hz
-      const now = ctx.currentTime;
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-      gain.connect(ctx.destination);
+      try {
+        const now = ctx.currentTime;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        gain.connect(ctx.destination);
 
-      const osc1 = ctx.createOscillator();
-      osc1.type = 'sine';
-      osc1.frequency.value = 440;
-      osc1.connect(gain);
-      osc1.start(now);
-      osc1.stop(now + 0.8);
+        const osc1 = ctx.createOscillator();
+        osc1.type = 'sine';
+        osc1.frequency.value = 440;
+        osc1.connect(gain);
+        osc1.start(now);
+        osc1.stop(now + 0.8);
 
-      const osc2 = ctx.createOscillator();
-      osc2.type = 'sine';
-      osc2.frequency.value = 480;
-      osc2.connect(gain);
-      osc2.start(now);
-      osc2.stop(now + 0.8);
+        const osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.value = 480;
+        osc2.connect(gain);
+        osc2.start(now);
+        osc2.stop(now + 0.8);
+      } catch (e) { console.warn('Ring sound error:', e); }
     };
 
     playRing();
-    intervalRef.current = setInterval(playRing, 1500); // Ring every 1.5s
+    intervalRef.current = setInterval(playRing, 1500);
 
     return () => {
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      if (ctxRef.current) { ctxRef.current.close(); ctxRef.current = null; }
     };
   }, [isRinging]);
 }
@@ -512,8 +519,10 @@ export default function App() {
     const hasError = callState === 'error' || callState === 'mic-error';
 
     return (
-      <div className="min-h-dvh bg-[#1A1A2E] flex flex-col items-center px-8">
+      <div className="min-h-dvh bg-[#1A1A2E] flex flex-col items-center px-8 relative overflow-hidden">
         <GlobalStyles />
+        {/* Tiled pattern background */}
+        <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'url(/pattern-bg.jpg)', backgroundSize: '300px', backgroundRepeat: 'repeat' }} />
         <div className="h-16 sm:h-24 shrink-0" />
 
         <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
