@@ -522,6 +522,8 @@ export default function App() {
     setScreenRaw(s);
     if (s === 'call' && charSlug) {
       window.history.pushState(null, '', `/${charSlug}`);
+    } else if (s === 'characters' && charSlug) {
+      window.history.pushState(null, '', `/characters/${charSlug}`);
     } else {
       const path = screenToPath[s] || '/';
       if (window.location.pathname !== path) window.history.pushState(null, '', path);
@@ -534,8 +536,13 @@ export default function App() {
       const path = window.location.pathname;
       const s = pathToScreen[path];
       if (s) { setScreenRaw(s); }
+      else if (path.startsWith('/characters/')) {
+        const slug = path.split('/')[2];
+        const char = characters.find(c => c.id === slug);
+        if (char) { setEditingChar({...char}); setScreenRaw('characters'); }
+        else { setScreenRaw('characters'); }
+      }
       else if (path !== '/login' && path !== '/') {
-        // Could be a character slug like /woody
         const slug = path.slice(1);
         const char = characters.find(c => c.id === slug);
         if (char && user) { setActiveCharacter(char); setScreenRaw('call'); }
@@ -663,6 +670,15 @@ export default function App() {
   useEffect(() => {
     const restoreScreen = () => {
       const path = window.location.pathname;
+      if (path.startsWith('/characters/')) {
+        const slug = path.split('/')[2];
+        if (slug) {
+          const char = defaultCharacters.find(c => c.id === slug);
+          if (char) setEditingChar({...char});
+        }
+        setScreenRaw('characters');
+        return;
+      }
       const mapped = pathToScreen[path];
       if (mapped && mapped !== 'login') setScreenRaw(mapped);
       else setScreenRaw('shelf');
@@ -824,7 +840,7 @@ export default function App() {
       const { error } = await supabase.from('characters').upsert(dbRow);
       if (error) throw error;
       await loadCharacters();
-      setEditingChar(null);
+      setEditingChar(null); if (window.location.pathname.startsWith('/characters/')) window.history.pushState(null, '', '/characters');
     } catch (err) {
       console.error('Save character failed:', err);
       alert('Failed to save: ' + err.message);
@@ -836,7 +852,7 @@ export default function App() {
     try {
       await supabase.from('characters').delete().eq('id', charId);
       await loadCharacters();
-      setEditingChar(null);
+      setEditingChar(null); if (window.location.pathname.startsWith('/characters/')) window.history.pushState(null, '', '/characters');
     } catch (err) {
       console.error('Delete failed:', err);
       alert('Failed to delete: ' + err.message);
@@ -1090,7 +1106,7 @@ export default function App() {
 
         {/* Edit character button */}
         <div className="absolute top-0 right-0 z-20 pt-14 pr-6 sm:pt-16 sm:pr-8">
-          <button onClick={async () => { const char = {...activeCharacter}; await handleHangUp(); setEditingChar(char); setScreen('characters'); }} className="flex items-center gap-1.5 text-white/40 hover:text-white/70 active:scale-95 transition-all">
+          <button onClick={async () => { const char = {...activeCharacter}; await handleHangUp(); setEditingChar(char); setScreen('characters', char.id); }} className="flex items-center gap-1.5 text-white/40 hover:text-white/70 active:scale-95 transition-all">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
@@ -1304,7 +1320,7 @@ export default function App() {
                 <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">{franchise.name}</h3>
                 <div className="flex flex-col gap-2">
                   {chars.map(char => (
-                    <button key={char.id} onClick={() => setEditingChar({...char})}
+                    <button key={char.id} onClick={() => { setEditingChar({...char}); window.history.pushState(null, "", `/characters/${char.id}`); }}
                       className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow text-left w-full">
                       <CharAvatar src={char.image} alt={char.name} size="sm" />
                       <div className="flex-1 min-w-0">
@@ -1339,7 +1355,7 @@ export default function App() {
                 </h3>
                 <div className="flex flex-col gap-2">
                   {chars.map(char => (
-                    <button key={char.id} onClick={() => setEditingChar({...char})}
+                    <button key={char.id} onClick={() => { setEditingChar({...char}); window.history.pushState(null, "", `/characters/${char.id}`); }}
                       className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow text-left w-full">
                       <CharAvatar src={char.image} alt={char.name} size="sm" />
                       <div className="flex-1 min-w-0">
@@ -1361,7 +1377,7 @@ export default function App() {
         {/* ═══ Character Editor Modal ═══ */}
         {editingChar && <CharacterEditor
           char={editingChar}
-          setChar={setEditingChar}
+          setChar={(c) => { setEditingChar(c); if (!c && window.location.pathname.startsWith('/characters/')) window.history.pushState(null, '', '/characters'); }}
           onSave={saveCharacter}
           onDelete={deleteCharacter}
           saving={charSaving}
