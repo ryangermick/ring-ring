@@ -59,7 +59,7 @@ export class GeminiLiveSession {
             outputAudioTranscription: {},
             inputAudioTranscription: {},
             systemInstruction: {
-              parts: [{ text: this.character.systemPrompt }]
+              parts: [{ text: `${this.character.systemPrompt}\n\nIMPORTANT CONTEXT: This is a phone call. A child is calling you on the phone. Answer like you're picking up a phone call — start with your greeting as if answering the phone. Stay in character throughout the conversation. Be warm, engaging, and kid-friendly. Remember you're speaking out loud, not typing — keep it natural and conversational.` }]
             }
           }
         };

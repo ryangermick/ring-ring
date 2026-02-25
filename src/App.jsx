@@ -737,7 +737,12 @@ export default function App() {
         const session = new GeminiLiveSession({
           character,
           onStateChange: (state) => {
-            setCallState(state);
+            // Keep ringing until character actually speaks (masks connection latency)
+            if (state === 'listening' || state === 'connected') {
+              setCallState(prev => prev === 'ringing' ? 'ringing' : state);
+            } else {
+              setCallState(state);
+            }
             if (state === 'error' || state === 'mic-error') {
               setError(state === 'mic-error' ? 'Microphone access denied. Please allow mic access and try again.' : 'Connection failed. Check your internet and try again.');
             }
