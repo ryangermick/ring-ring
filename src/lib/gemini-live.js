@@ -16,10 +16,12 @@ function base64ToArrayBuffer(base64) {
 }
 
 export class GeminiLiveSession {
-  constructor({ character, onTranscript, onStateChange }) {
+  constructor({ character, onTranscript, onStateChange, onInputLevel, onOutputLevel }) {
     this.character = character;
     this.onTranscript = onTranscript;
     this.onStateChange = onStateChange;
+    this.onInputLevel = onInputLevel;
+    this.onOutputLevel = onOutputLevel;
     this.ws = null;
     this.audioContext = null;
     this.mediaStream = null;
@@ -28,6 +30,8 @@ export class GeminiLiveSession {
     this.activeSources = [];
     this.nextPlayTime = 0;
     this.setupComplete = false;
+    this.outputAnalyser = null;
+    this._outputAnimFrame = null;
   }
 
   async connect() {
@@ -36,12 +40,17 @@ export class GeminiLiveSession {
     // Set up audio context for playback (24kHz output from Gemini)
     this.audioContext = new AudioContext({ sampleRate: 24000 });
 
+    // Output analyser for real-time volume monitoring
+    this.outputAnalyser = this.audioContext.createAnalyser();
+    this.outputAnalyser.fftSize = 256;
+    this.outputAnalyser.smoothingTimeConstant = 0.3;
+    this.outputAnalyser.connect(this.audioContext.destination);
+
     // Open WebSocket
     this.ws = new WebSocket(WS_URL);
 
     return new Promise((resolve, reject) => {
       this.ws.onopen = () => {
-        // Send setup message
         const setupMessage = {
           setup: {
             model: 'models/gemini-2.0-flash-live-001',
@@ -71,7 +80,6 @@ export class GeminiLiveSession {
           data = JSON.parse(event.data);
         }
 
-        // Setup complete response
         if (data.setupComplete) {
           this.setupComplete = true;
           this.onStateChange?.('connected');
@@ -92,12 +100,10 @@ export class GeminiLiveSession {
           return;
         }
 
-        // Handle server content (audio/text)
         if (data.serverContent) {
           const { serverContent } = data;
 
           if (serverContent.interrupted) {
-            // Stop current playback
             this._stopPlayback();
             this.onStateChange?.('listening');
             return;
@@ -114,10 +120,6 @@ export class GeminiLiveSession {
               }
             }
           }
-
-          if (serverContent.turnComplete) {
-            // Will transition to listening after audio finishes playing
-          }
         }
       };
 
@@ -132,7 +134,6 @@ export class GeminiLiveSession {
         this.onStateChange?.('disconnected');
       };
 
-      // Timeout
       setTimeout(() => reject(new Error('Connection timeout')), 15000);
     });
   }
@@ -156,6 +157,14 @@ export class GeminiLiveSession {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
+
+        // Calculate input level for visualizer
+        if (this.onInputLevel) {
+          let sum = 0;
+          for (let i = 0; i < inputData.length; i++) sum += Math.abs(inputData[i]);
+          this.onInputLevel(Math.min(1, (sum / inputData.length) * 8));
+        }
+
         // Convert float32 to int16
         const pcm16 = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
@@ -163,7 +172,6 @@ export class GeminiLiveSession {
           pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
 
-        // Convert to base64
         const bytes = new Uint8Array(pcm16.buffer);
         let binary = '';
         for (let i = 0; i < bytes.length; i++) {
@@ -185,10 +193,27 @@ export class GeminiLiveSession {
       this.processor.connect(micContext.destination);
       this._micContext = micContext;
       this.onStateChange?.('listening');
+
+      // Start output volume monitoring loop
+      this._monitorOutputVolume();
     } catch (err) {
       console.error('Microphone error:', err);
       this.onStateChange?.('mic-error');
     }
+  }
+
+  _monitorOutputVolume() {
+    if (!this.outputAnalyser || !this.onOutputLevel) return;
+    const dataArray = new Uint8Array(this.outputAnalyser.frequencyBinCount);
+    const tick = () => {
+      this.outputAnalyser.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      const avg = sum / dataArray.length / 255;
+      this.onOutputLevel(avg);
+      this._outputAnimFrame = requestAnimationFrame(tick);
+    };
+    tick();
   }
 
   _stopPlayback() {
@@ -215,16 +240,14 @@ export class GeminiLiveSession {
       const audioBuffer = this.audioContext.createBuffer(1, float32.length, 24000);
       audioBuffer.getChannelData(0).set(float32);
 
-      // Gapless scheduled playback — schedule each chunk right after the previous
       const now = this.audioContext.currentTime;
       if (!this.nextPlayTime || this.nextPlayTime < now) {
         this.nextPlayTime = now;
       }
 
-      // Create gain node to prevent clipping
       const gainNode = this.audioContext.createGain();
       gainNode.gain.value = 0.85;
-      gainNode.connect(this.audioContext.destination);
+      gainNode.connect(this.outputAnalyser); // Route through analyser
 
       const source = this.audioContext.createBufferSource();
       source.buffer = audioBuffer;
@@ -234,7 +257,6 @@ export class GeminiLiveSession {
       this.nextPlayTime += audioBuffer.duration;
       this.activeSources.push(source);
 
-      // Clean up finished sources and detect end of speech
       source.onended = () => {
         this.activeSources = this.activeSources.filter(s => s !== source);
         if (this.activeSources.length === 0) {
@@ -248,7 +270,11 @@ export class GeminiLiveSession {
   }
 
   disconnect() {
-    // Stop microphone
+    if (this._outputAnimFrame) {
+      cancelAnimationFrame(this._outputAnimFrame);
+      this._outputAnimFrame = null;
+    }
+
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(t => t.stop());
       this.mediaStream = null;
@@ -262,16 +288,13 @@ export class GeminiLiveSession {
       this._micContext = null;
     }
 
-    // Stop playback
     this._stopPlayback();
 
-    // Close audio context
     if (this.audioContext) {
       this.audioContext.close();
       this.audioContext = null;
     }
 
-    // Close WebSocket
     if (this.ws) {
       this.ws.close();
       this.ws = null;

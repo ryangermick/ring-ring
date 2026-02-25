@@ -11,43 +11,147 @@ const GlobalStyles = () => (
     }
     .animate-sonar { animation: sonar 2s infinite cubic-bezier(0, 0, 0.2, 1); }
     .animate-sonar-delayed { animation: sonar 2s infinite cubic-bezier(0, 0, 0.2, 1); animation-delay: 1s; }
-    @keyframes wave {
-      0%, 100% { height: 8px; }
-      50% { height: 28px; }
-    }
-    @keyframes listen {
-      0%, 100% { height: 6px; }
-      50% { height: 20px; }
-    }
-    .animate-wave-1 { animation: wave 0.8s infinite ease-in-out; }
-    .animate-wave-2 { animation: wave 0.8s infinite ease-in-out 0.15s; }
-    .animate-wave-3 { animation: wave 0.8s infinite ease-in-out 0.3s; }
-    .animate-wave-4 { animation: wave 0.8s infinite ease-in-out 0.1s; }
-    .animate-wave-5 { animation: wave 0.8s infinite ease-in-out 0.25s; }
-    .animate-listen-1 { animation: listen 1.2s infinite ease-in-out; }
-    .animate-listen-2 { animation: listen 1.2s infinite ease-in-out 0.2s; }
-    .animate-listen-3 { animation: listen 1.2s infinite ease-in-out 0.4s; }
-    .animate-listen-4 { animation: listen 1.2s infinite ease-in-out 0.15s; }
-    .animate-listen-5 { animation: listen 1.2s infinite ease-in-out 0.35s; }
   `}</style>
 );
 
-/* ═══════════ Wave Visualizer Components ═══════════ */
-const SpeakingWaves = () => (
-  <div className="flex items-center gap-[5px] h-8">
-    {[1,2,3,4,5].map(n => (
-      <div key={n} className={`w-[3px] bg-[#FBBC05] rounded-full animate-wave-${n}`} />
-    ))}
-  </div>
-);
+/* ═══════════ Canvas Audio Visualizer (ported from memyself.ai) ═══════════ */
+const NUM_BARS = 48;
 
-const ListeningWaves = () => (
-  <div className="flex items-center gap-[5px] h-8">
-    {[1,2,3,4,5].map(n => (
-      <div key={n} className={`w-[3px] bg-[#34A853] rounded-full animate-listen-${n}`} />
-    ))}
-  </div>
-);
+function AudioVisualizer({ inputLevel, outputLevel, isActive, isSpeaking }) {
+  const canvasRef = useRef(null);
+  const animFrameRef = useRef(null);
+  const barsRef = useRef(new Array(NUM_BARS).fill(0));
+  const targetBarsRef = useRef(new Array(NUM_BARS).fill(0));
+  const timeRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !isActive) return;
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+    };
+    resize();
+
+    const animate = () => {
+      const { width, height } = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, width, height);
+
+      timeRef.current += 0.02;
+      const t = timeRef.current;
+      const level = isSpeaking ? outputLevel : inputLevel;
+      const activeLevel = Math.max(0.03, level);
+
+      for (let i = 0; i < NUM_BARS; i++) {
+        const normalized = i / (NUM_BARS - 1);
+        const centerDist = Math.abs(normalized - 0.5) * 2;
+
+        const wave1 = Math.sin(t * 2.5 + i * 0.3) * 0.5 + 0.5;
+        const wave2 = Math.sin(t * 1.7 + i * 0.5 + 1.2) * 0.3 + 0.5;
+        const wave3 = Math.sin(t * 3.8 + i * 0.15) * 0.2 + 0.5;
+
+        const envelope = Math.exp(-centerDist * centerDist * 2.5);
+        const target = (wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) * envelope * activeLevel;
+        targetBarsRef.current[i] = target;
+      }
+
+      for (let i = 0; i < NUM_BARS; i++) {
+        barsRef.current[i] += (targetBarsRef.current[i] - barsRef.current[i]) * 0.15;
+      }
+
+      const barWidth = width / NUM_BARS;
+      const gap = 1.5;
+      const maxBarHeight = height * 0.8;
+      const centerY = height / 2;
+
+      for (let i = 0; i < NUM_BARS; i++) {
+        const barHeight = Math.max(2, barsRef.current[i] * maxBarHeight);
+        const x = i * barWidth + gap / 2;
+        const w = barWidth - gap;
+        const alpha = 0.3 + barsRef.current[i] * 0.7;
+
+        // Gold (#FBBC05) when speaking, green (#34A853) when listening
+        if (isSpeaking) {
+          ctx.fillStyle = `rgba(251, 188, 5, ${alpha})`;
+        } else {
+          ctx.fillStyle = `rgba(52, 168, 83, ${alpha})`;
+        }
+
+        const radius = Math.min(w / 2, 2);
+        const topY = centerY - barHeight / 2;
+
+        ctx.beginPath();
+        ctx.roundRect(x, topY, w, barHeight, radius);
+        ctx.fill();
+      }
+
+      animFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isActive, inputLevel, outputLevel, isSpeaking]);
+
+  return (
+    <canvas ref={canvasRef} className="w-full h-full" style={{ display: isActive ? 'block' : 'none' }} />
+  );
+}
+
+/* ═══════════ Ringing Sound (Web Audio API synthesized phone ring) ═══════════ */
+function useRingSound(isRinging) {
+  const ctxRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (!isRinging) {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (ctxRef.current) { ctxRef.current.close(); ctxRef.current = null; }
+      return;
+    }
+
+    const ctx = new AudioContext();
+    ctxRef.current = ctx;
+
+    const playRing = () => {
+      // Classic dual-tone phone ring: 440 Hz + 480 Hz
+      const now = ctx.currentTime;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+      gain.connect(ctx.destination);
+
+      const osc1 = ctx.createOscillator();
+      osc1.type = 'sine';
+      osc1.frequency.value = 440;
+      osc1.connect(gain);
+      osc1.start(now);
+      osc1.stop(now + 0.8);
+
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.value = 480;
+      osc2.connect(gain);
+      osc2.start(now);
+      osc2.stop(now + 0.8);
+    };
+
+    playRing();
+    intervalRef.current = setInterval(playRing, 1500); // Ring every 1.5s
+
+    return () => {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (ctxRef.current) { ctxRef.current.close(); ctxRef.current = null; }
+    };
+  }, [isRinging]);
+}
 
 /* ═══════════ Avatar Component ═══════════ */
 const CharAvatar = ({ src, alt, size = 'md', className = '' }) => {
@@ -88,6 +192,11 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [characters, setCharacters] = useState(defaultCharacters);
   const [error, setError] = useState(null);
+  const [inputLevel, setInputLevel] = useState(0);
+  const [outputLevel, setOutputLevel] = useState(0);
+
+  // Ringing sound
+  useRingSound(callState === 'ringing');
 
   // Transcript viewer
   const [viewingTranscript, setViewingTranscript] = useState(null);
@@ -186,7 +295,9 @@ export default function App() {
           },
           onTranscript: (role, text) => {
             transcriptRef.current.push({ role, text, ts: Date.now() });
-          }
+          },
+          onInputLevel: setInputLevel,
+          onOutputLevel: setOutputLevel,
         });
         await session.connect();
         sessionRef.current = session;
@@ -430,13 +541,22 @@ export default function App() {
             {activeCharacter.name}
           </h2>
 
-          {/* Status — visual animations instead of text labels */}
-          <div className="h-10 flex items-center justify-center mb-2">
-            {ringing && <span className="text-[#34A853] font-semibold">Calling…</span>}
-            {listening && <ListeningWaves />}
-            {speaking && <SpeakingWaves />}
-            {hasError && <span className="text-[#EA4335] font-semibold text-sm text-center px-4">{error}</span>}
-            {callState === 'connected' && <span className="text-slate-500 font-semibold">Connected</span>}
+          {/* Audio visualizer — canvas-based, reacts to real audio levels */}
+          <div className="w-full h-20 mb-4">
+            {(listening || speaking) ? (
+              <AudioVisualizer
+                inputLevel={inputLevel}
+                outputLevel={outputLevel}
+                isActive={true}
+                isSpeaking={speaking}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                {ringing && <span className="text-[#34A853] font-semibold">Calling…</span>}
+                {hasError && <span className="text-[#EA4335] font-semibold text-sm text-center px-4">{error}</span>}
+                {callState === 'connected' && <span className="text-slate-500 font-semibold">Connected</span>}
+              </div>
+            )}
           </div>
 
           <span className="font-mono text-sm tracking-widest text-slate-600">{fmt(duration)}</span>
