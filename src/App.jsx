@@ -1094,24 +1094,18 @@ export default function App() {
     const hasError = callState === 'error' || callState === 'mic-error';
 
     return (
-      <div className="min-h-dvh bg-[#1A1A2E] flex flex-col items-center px-8 relative overflow-hidden">
+      <div className="min-h-dvh bg-white flex flex-col items-center relative overflow-hidden">
         <GlobalStyles />
-        {/* Tiled pattern background */}
-        <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{ backgroundImage: 'url(/pattern-bg.jpg)', backgroundSize: '300px', backgroundRepeat: 'repeat' }} />
 
-        {/* Back button */}
-        <div className="absolute top-0 left-0 z-20 pt-14 pl-6 sm:pt-16 sm:pl-8">
-          <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }} className="flex items-center gap-2 text-white/40 hover:text-white/70 active:scale-95 transition-all">
+        {/* Top bar — back + edit */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between pt-14 px-6 sm:pt-16 sm:px-8">
+          <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }} className="flex items-center gap-2 text-slate-400 hover:text-slate-600 active:scale-95 transition-all">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             <span className="text-sm font-semibold">Back</span>
           </button>
-        </div>
-
-        {/* Edit character button */}
-        <div className="absolute top-0 right-0 z-20 pt-14 pr-6 sm:pt-16 sm:pr-8">
-          <button onClick={async () => { const char = {...activeCharacter}; await handleHangUp(); setEditingChar(char); setScreen('characters', char.id); }} className="flex items-center gap-1.5 text-white/40 hover:text-white/70 active:scale-95 transition-all">
+          <button onClick={async () => { const char = {...activeCharacter}; await handleHangUp(); setEditingChar(char); setScreen('characters', char.id); }} className="flex items-center gap-1.5 text-slate-400 hover:text-slate-600 active:scale-95 transition-all">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
@@ -1119,44 +1113,36 @@ export default function App() {
           </button>
         </div>
 
-        <div className="h-16 sm:h-24 shrink-0" />
-
-        <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
-          {/* Avatar with sonar / listening glow / speaking glow */}
-          <div className="relative w-44 h-44 sm:w-52 sm:h-52 mb-10 flex items-center justify-center">
-            {ringing && (
-              <>
-                <div className="absolute inset-0 rounded-full border-2 border-[#34A853]/60 animate-sonar" />
-                <div className="absolute inset-0 rounded-full border-2 border-[#34A853]/40 animate-sonar-delayed" />
-              </>
-            )}
-            <div className={`
-              relative w-full h-full rounded-full overflow-hidden bg-white z-10 transition-all duration-500
-              ${speaking ? 'scale-[1.06] ring-4 ring-[#FBBC05] shadow-[0_0_40px_rgba(251,188,5,0.35)]' : ''}
-              ${listening ? 'ring-4 ring-[#34A853]/60 shadow-[0_0_30px_rgba(52,168,83,0.25)]' : ''}
-              ${hasError ? 'ring-4 ring-rose-500/60' : ''}
-              ${!speaking && !listening && !ringing && !hasError ? 'ring-2 ring-white/10' : ''}
-            `}>
-              <img src={activeCharacter.image} alt={activeCharacter.name}
-                className="absolute inset-0 w-full h-full object-cover object-[50%_30%]" />
-            </div>
+        {/* Large character image — dominant visual */}
+        <div className="flex-1 flex flex-col items-center justify-center w-full px-8 pt-24 pb-4">
+          <div className={`relative transition-all duration-500 ${speaking ? 'scale-[1.03]' : ''} ${ringing ? 'animate-pulse' : ''}`}>
+            <img src={activeCharacter.image} alt={activeCharacter.name}
+              className="w-64 h-64 sm:w-80 sm:h-80 object-contain drop-shadow-xl" />
+            {/* Subtle glow behind image based on state */}
+            {speaking && <div className="absolute inset-0 -z-10 bg-amber-200/30 rounded-full blur-3xl scale-110" />}
+            {listening && <div className="absolute inset-0 -z-10 bg-emerald-200/30 rounded-full blur-3xl scale-110" />}
+            {ringing && <div className="absolute inset-0 -z-10 bg-blue-200/20 rounded-full blur-3xl scale-110 animate-pulse" />}
           </div>
+        </div>
 
-          <div className="flex items-center gap-3 mb-3">
-            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+        {/* Bottom controls area */}
+        <div className="w-full max-w-sm px-8 pb-12 sm:pb-16 flex flex-col items-center">
+          {/* Name + favorite */}
+          <div className="flex items-center gap-3 mb-4">
+            <h2 className="text-2xl sm:text-3xl font-black text-[#1A1A2E] tracking-tight">
               {activeCharacter.name}
             </h2>
-            <button onClick={() => toggleFavorite(activeCharacter.id)} className="text-white/50 hover:text-white transition-all active:scale-90">
+            <button onClick={() => toggleFavorite(activeCharacter.id)} className="text-slate-300 hover:text-rose-400 transition-all active:scale-90">
               {favorites.includes(activeCharacter.id) ? (
-                <svg className="w-7 h-7 text-rose-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                <svg className="w-6 h-6 text-rose-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
               ) : (
-                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
               )}
             </button>
           </div>
 
-          {/* Audio visualizer — canvas-based, reacts to real audio levels */}
-          <div className="w-full h-20 mb-4">
+          {/* Audio visualizer / status */}
+          <div className="w-full h-16 mb-3">
             {(listening || speaking) ? (
               <AudioVisualizer
                 inputLevel={inputLevel}
@@ -1166,23 +1152,23 @@ export default function App() {
               />
             ) : (
               <div className="h-full flex items-center justify-center">
-                {ringing && <span className="text-[#34A853] font-semibold">Calling…</span>}
+                {ringing && <span className="text-[#4285F4] font-semibold animate-pulse">Calling…</span>}
                 {hasError && <span className="text-[#EA4335] font-semibold text-sm text-center px-4">{error}</span>}
-                {callState === 'connected' && <span className="text-slate-500 font-semibold">Connected</span>}
+                {callState === 'connected' && <span className="text-slate-400 font-semibold">Connected</span>}
               </div>
             )}
           </div>
 
-          {settings.call_timer_visible && <span className="font-mono text-sm tracking-widest text-slate-600">{fmt(duration)}</span>}
-        </div>
-
-        <div className="pb-12 sm:pb-16 pt-8 shrink-0">
-          <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }}
-            className="w-[72px] h-[72px] bg-[#EA4335] rounded-full flex items-center justify-center shadow-xl shadow-[#EA4335]/30 active:scale-90 hover:bg-[#D33828] transition-all duration-200">
-            <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.73-1.68-1.36-2.66-1.85a.994.994 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
-            </svg>
-          </button>
+          {/* Timer + hang up */}
+          <div className="flex flex-col items-center gap-5">
+            {settings.call_timer_visible && <span className="font-mono text-xs tracking-widest text-slate-400">{fmt(duration)}</span>}
+            <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }}
+              className="w-16 h-16 bg-[#EA4335] rounded-full flex items-center justify-center shadow-lg shadow-[#EA4335]/20 active:scale-90 hover:bg-[#D33828] transition-all duration-200">
+              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.73-1.68-1.36-2.66-1.85a.994.994 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     );
