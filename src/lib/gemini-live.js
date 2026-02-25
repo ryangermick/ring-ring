@@ -16,8 +16,10 @@ function base64ToArrayBuffer(base64) {
 }
 
 export class GeminiLiveSession {
-  constructor({ character, onTranscript, onStateChange, onInputLevel, onOutputLevel }) {
+  constructor({ character, userProfile, pastConversations, onTranscript, onStateChange, onInputLevel, onOutputLevel }) {
     this.character = character;
+    this.userProfile = userProfile;
+    this.pastConversations = pastConversations;
     this.onTranscript = onTranscript;
     this.onStateChange = onStateChange;
     this.onInputLevel = onInputLevel;
@@ -32,6 +34,46 @@ export class GeminiLiveSession {
     this.setupComplete = false;
     this.outputAnalyser = null;
     this._outputAnimFrame = null;
+  }
+
+  _buildSystemPrompt() {
+    let prompt = this.character.systemPrompt;
+
+    // Add user profile context
+    if (this.userProfile) {
+      const p = this.userProfile;
+      const parts = [];
+      if (p.display_name) parts.push(`Their name is ${p.display_name}`);
+      if (p.birthdate) {
+        const age = Math.floor((Date.now() - new Date(p.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        if (age > 0 && age < 20) parts.push(`they are ${age} years old`);
+      }
+      if (p.favorite_color) parts.push(`their favorite color is ${p.favorite_color}`);
+      if (p.favorite_animal) parts.push(`their favorite animal is ${p.favorite_animal}`);
+      if (p.favorite_food) parts.push(`their favorite food is ${p.favorite_food}`);
+      if (p.favorite_movie) parts.push(`their favorite movie is ${p.favorite_movie}`);
+      if (p.interests) parts.push(`they like ${p.interests}`);
+      if (parts.length > 0) {
+        prompt += `\n\nABOUT THE CALLER: ${parts.join('. ')}. Use this info naturally — mention their name, reference their interests when relevant, but don't list everything at once. Make them feel known and special.`;
+      }
+    }
+
+    // Add past conversation summaries
+    if (this.pastConversations && this.pastConversations.length > 0) {
+      const summaries = this.pastConversations.slice(0, 3).map(c => {
+        const msgs = c.messages || [];
+        if (!msgs.length) return null;
+        const preview = msgs.slice(0, 4).map(m => `${m.role === 'character' ? 'You' : 'Caller'}: ${m.content}`).join(' | ');
+        return preview;
+      }).filter(Boolean);
+      if (summaries.length > 0) {
+        prompt += `\n\nPREVIOUS CALLS WITH THIS PERSON (for continuity — you can reference these naturally):\n${summaries.join('\n')}`;
+      }
+    }
+
+    prompt += `\n\nIMPORTANT CONTEXT: This is a phone call. A child is calling you on the phone. Answer like you're picking up a phone call — start with your greeting as if answering the phone. Stay in character throughout the conversation. Be warm, engaging, and kid-friendly. Remember you're speaking out loud, not typing — keep it natural and conversational.`;
+
+    return prompt;
   }
 
   async connect() {
@@ -59,7 +101,7 @@ export class GeminiLiveSession {
             outputAudioTranscription: {},
             inputAudioTranscription: {},
             systemInstruction: {
-              parts: [{ text: `${this.character.systemPrompt}\n\nIMPORTANT CONTEXT: This is a phone call. A child is calling you on the phone. Answer like you're picking up a phone call — start with your greeting as if answering the phone. Stay in character throughout the conversation. Be warm, engaging, and kid-friendly. Remember you're speaking out loud, not typing — keep it natural and conversational.` }]
+              parts: [{ text: this._buildSystemPrompt() }]
             }
           }
         };

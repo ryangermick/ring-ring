@@ -732,10 +732,33 @@ export default function App() {
       if (data) dbRecordIdRef.current = data.id;
     } catch (err) { console.error('DB error:', err); }
 
+    // Fetch past conversations with this character for context
+    let pastConversations = [];
+    try {
+      const { data: convos } = await supabase.from('conversations')
+        .select('id, started_at')
+        .eq('user_id', user.id).eq('character_id', character.id)
+        .gt('duration_seconds', 0)
+        .order('started_at', { ascending: false }).limit(3);
+      if (convos && convos.length > 0) {
+        const convoIds = convos.map(c => c.id);
+        const { data: msgs } = await supabase.from('messages')
+          .select('conversation_id, role, content')
+          .in('conversation_id', convoIds)
+          .order('created_at', { ascending: true });
+        pastConversations = convos.map(c => ({
+          ...c,
+          messages: (msgs || []).filter(m => m.conversation_id === c.id)
+        }));
+      }
+    } catch (err) { console.error('Failed to load past convos:', err); }
+
     setTimeout(async () => {
       try {
         const session = new GeminiLiveSession({
           character,
+          userProfile: profile,
+          pastConversations,
           onStateChange: (state) => {
             // Keep ringing until character actually speaks (masks connection latency)
             if (state === 'listening' || state === 'connected') {
