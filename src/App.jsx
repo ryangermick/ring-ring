@@ -575,6 +575,7 @@ export default function App() {
 
   // Transcript viewer
   const [viewingTranscript, setViewingTranscript] = useState(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
   const [transcriptMessages, setTranscriptMessages] = useState([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
 
@@ -1155,14 +1156,27 @@ export default function App() {
                         </svg>
                       </div>
                     </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); if (confirm('Delete this call?')) deleteConversation(rec.id); }}
-                      className="absolute -right-2 -top-2 bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-300 text-slate-300 hover:text-rose-500 rounded-full w-7 h-7 flex items-center justify-center shadow-sm transition-all active:scale-90 z-10"
-                      title="Delete">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                    {confirmingDeleteId === rec.id ? (
+                      <div className="absolute -right-2 -top-2 flex gap-1 z-10">
+                        <button onClick={(e) => { e.stopPropagation(); deleteConversation(rec.id); setConfirmingDeleteId(null); }}
+                          className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-full px-3 py-1.5 shadow-sm transition-all active:scale-90">
+                          Delete
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmingDeleteId(null); }}
+                          className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 text-xs font-bold rounded-full px-3 py-1.5 shadow-sm transition-all active:scale-90">
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmingDeleteId(rec.id); }}
+                        className="absolute -right-2 -top-2 bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-300 text-slate-300 hover:text-rose-500 rounded-full w-7 h-7 flex items-center justify-center shadow-sm transition-all active:scale-90 z-10"
+                        title="Delete">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 );
               })}
