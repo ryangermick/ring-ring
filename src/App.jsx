@@ -218,6 +218,22 @@ export default function App() {
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [samplingVoice, setSamplingVoice] = useState(null);
+  const sampleAudioRef = useRef(null);
+
+  const playVoiceSample = (voiceName) => {
+    if (sampleAudioRef.current) {
+      sampleAudioRef.current.pause();
+      sampleAudioRef.current = null;
+      if (samplingVoice === voiceName) { setSamplingVoice(null); return; }
+    }
+    setSamplingVoice(voiceName);
+    const audio = new Audio(`/voice-samples/${encodeURIComponent(voiceName)}.wav`);
+    audio.onended = () => { setSamplingVoice(null); sampleAudioRef.current = null; };
+    audio.onerror = () => { setSamplingVoice(null); sampleAudioRef.current = null; };
+    audio.play();
+    sampleAudioRef.current = audio;
+  };
 
   // Ringing sound (respects settings)
   useRingSound(callState === 'ringing' && settings.sound_effects);
@@ -1017,13 +1033,26 @@ export default function App() {
 
             <div className="bg-white rounded-2xl p-5 shadow-sm">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block">Default Voice</label>
-              <select value={settings.default_voice}
-                onChange={e => setSettings(p => ({ ...p, default_voice: e.target.value }))}
-                className="w-full bg-[#FFFBF5] rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
-                {VOICE_OPTIONS.map(v => (
-                  <option key={v.value} value={v.value}>{v.label} — {v.desc}</option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select value={settings.default_voice}
+                  onChange={e => setSettings(p => ({ ...p, default_voice: e.target.value }))}
+                  className="flex-1 bg-[#FFFBF5] rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
+                  {VOICE_OPTIONS.map(v => (
+                    <option key={v.value} value={v.value}>{v.label} — {v.desc}</option>
+                  ))}
+                </select>
+                <button onClick={() => playVoiceSample(settings.default_voice)}
+                  className={`px-3 rounded-xl border transition-all active:scale-95 flex items-center gap-1.5 text-xs font-bold shrink-0 ${
+                    samplingVoice === settings.default_voice
+                      ? 'bg-rose-50 border-rose-300 text-rose-500' : 'bg-[#FFFBF5] border-slate-200 text-slate-400 hover:text-[#4285F4] hover:border-[#4285F4]'
+                  }`}>
+                  {samplingVoice === settings.default_voice ? (
+                    <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg> Stop</>
+                  ) : (
+                    <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg> Play</>
+                  )}
+                </button>
+              </div>
             </div>
 
             <button onClick={saveSettings} disabled={settingsSaving}
@@ -1281,13 +1310,26 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user }) {
                 </div>
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">Voice</label>
-                  <select value={char.voiceName}
-                    onChange={e => setChar(p => ({...p, voiceName: e.target.value}))}
-                    className="w-full bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
-                    {VOICE_OPTIONS.map(v => (
-                      <option key={v.value} value={v.value}>{v.label} — {v.desc}</option>
-                    ))}
-                  </select>
+                  <div className="flex gap-2">
+                    <select value={char.voiceName}
+                      onChange={e => setChar(p => ({...p, voiceName: e.target.value}))}
+                      className="flex-1 bg-white rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none min-w-0">
+                      {VOICE_OPTIONS.map(v => (
+                        <option key={v.value} value={v.value}>{v.label} — {v.desc}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => playVoiceSample(char.voiceName)}
+                      className={`px-2.5 rounded-xl border transition-all active:scale-95 flex items-center justify-center shrink-0 ${
+                        samplingVoice === char.voiceName
+                          ? 'bg-rose-50 border-rose-300 text-rose-500' : 'bg-white border-slate-200 text-slate-400 hover:text-[#4285F4] hover:border-[#4285F4]'
+                      }`} title={samplingVoice === char.voiceName ? 'Stop' : 'Play sample'}>
+                      {samplingVoice === char.voiceName ? (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 

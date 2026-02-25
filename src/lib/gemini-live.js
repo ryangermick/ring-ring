@@ -45,7 +45,7 @@ export class GeminiLiveSession {
       this.ws.onopen = () => {
         const setupMessage = {
           setup: {
-            model: 'models/gemini-2.5-flash-native-audio-latest',
+            model: 'models/gemini-2.5-flash-native-audio-preview-12-2025',
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: {
