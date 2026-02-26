@@ -1058,21 +1058,21 @@ export default function App() {
     return (
       <div className="min-h-dvh bg-[#FFFBF5]">
         <GlobalStyles />
-        <header className="sticky top-0 z-50 h-24 sm:h-28 bg-[#FFFBF5]/85 backdrop-blur-xl border-b border-[#1A1A2E]/5">
-          <div className="h-full max-w-4xl mx-auto px-4 sm:px-12 flex items-center justify-between">
-            <img src="/logo-trimmed.png" alt="Ring Ring Ring" className="h-10 sm:h-16" />
-            <div className="flex items-center gap-2 sm:gap-5">
+        <header className="sticky top-0 z-50 h-16 sm:h-28 bg-[#FFFBF5]/85 backdrop-blur-xl border-b border-[#1A1A2E]/5">
+          <div className="h-full max-w-4xl mx-auto px-3 sm:px-12 flex items-center justify-between">
+            <img src="/logo-trimmed.png" alt="Ring Ring Ring" className="h-8 sm:h-16 shrink-0" />
+            <div className="flex items-center gap-3 sm:gap-5">
               <button onClick={async () => {
                   setScreen('history');
                   const { data } = await supabase.from('conversations').select('*')
                     .eq('user_id', user.id).gt('duration_seconds', 0).order('started_at', { ascending: false });
                   setHistory(data || []);
                 }}
-                className="text-[11px] sm:text-[13px] font-bold uppercase tracking-wider sm:tracking-widest text-slate-400 hover:text-[#4285F4] transition-colors">
+                className="text-[11px] sm:text-[13px] font-semibold sm:font-bold uppercase tracking-normal sm:tracking-widest text-slate-400 hover:text-[#4285F4] transition-colors">
                 History
               </button>
               <button onClick={() => setScreen('characters')}
-                className="text-[11px] sm:text-[13px] font-bold uppercase tracking-wider sm:tracking-widest text-slate-400 hover:text-[#4285F4] transition-colors">
+                className="text-[11px] sm:text-[13px] font-semibold sm:font-bold uppercase tracking-normal sm:tracking-widest text-slate-400 hover:text-[#4285F4] transition-colors">
                 Characters
               </button>
               <div className="relative" ref={avatarMenuRef}>
