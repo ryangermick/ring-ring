@@ -674,6 +674,7 @@ export default function App() {
 
   const sessionRef = useRef(null);
   const [debugPrompt, setDebugPrompt] = useState(null);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const timerRef = useRef(null);
   const callSetupRef = useRef(null);
   const callAbortedRef = useRef(false);
@@ -1278,15 +1279,60 @@ export default function App() {
             </button>
           </div>
 
-          {/* AI disclaimer */}
-          <p className="text-[11px] text-slate-300 mt-4 text-center">AI-powered voice • Characters are fictional parodies</p>
+          {/* AI disclaimer + debug toggle */}
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <p className="text-[11px] text-slate-300 text-center">AI-powered voice • Characters are fictional parodies</p>
+            <button onClick={() => setShowDebugPanel(p => !p)} className="text-slate-200 hover:text-slate-400 transition-colors" title="Debug info">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+              </svg>
+            </button>
+          </div>
 
-          {/* Debug: show system prompt */}
-          {settings.debug_mode && debugPrompt && (
-            <details className="mt-4 w-full">
-              <summary className="text-[11px] text-slate-400 cursor-pointer font-semibold">System Prompt</summary>
-              <pre className="mt-2 text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 whitespace-pre-wrap break-words max-h-60 overflow-y-auto">{debugPrompt}</pre>
-            </details>
+          {/* Debug panel */}
+          {showDebugPanel && (
+            <div className="mt-3 w-full bg-slate-50 rounded-2xl border border-slate-100 p-4 text-[10px] text-slate-500 space-y-3 max-h-[50vh] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-[11px] text-slate-600">Debug Info</span>
+                <button onClick={() => setShowDebugPanel(false)} className="text-slate-400 hover:text-slate-600">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-600">Model:</span>{' '}
+                <span className="font-mono">gemini-2.5-flash-native-audio-preview-12-2025</span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-600">Voice:</span>{' '}
+                <span className="font-mono">{activeCharacter.voiceName || 'Kore'}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-600">Character ID:</span>{' '}
+                <span className="font-mono">{activeCharacter.id}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-600">Franchise:</span>{' '}
+                <span className="font-mono">{activeCharacter.franchise}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-600">Call State:</span>{' '}
+                <span className="font-mono">{callState}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-600">Duration:</span>{' '}
+                <span className="font-mono">{duration}s</span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-600">Transcript Turns:</span>{' '}
+                <span className="font-mono">{transcriptRef.current.length}</span>
+              </div>
+              {debugPrompt && (
+                <details>
+                  <summary className="font-semibold text-slate-600 cursor-pointer">System Prompt ▸</summary>
+                  <pre className="mt-2 text-[9px] text-slate-400 bg-white rounded-xl p-3 whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-slate-100">{debugPrompt}</pre>
+                </details>
+              )}
+            </div>
           )}
         </div>
       </div>
