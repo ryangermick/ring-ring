@@ -675,6 +675,8 @@ export default function App() {
   const sessionRef = useRef(null);
   const [debugPrompt, setDebugPrompt] = useState(null);
   const timerRef = useRef(null);
+  const callSetupRef = useRef(null);
+  const callAbortedRef = useRef(false);
   const transcriptRef = useRef([]);
   const dbRecordIdRef = useRef(null);
 
@@ -789,6 +791,7 @@ export default function App() {
   const startCall = async (character) => {
     setActiveCharacter(character);
     setScreen('call', character.id);
+    callAbortedRef.current = false;
     setCallState('ringing');
     setDuration(0);
     setError(null);
@@ -826,7 +829,10 @@ export default function App() {
       }
     } catch (err) { console.error('Failed to load past convos:', err); }
 
-    setTimeout(async () => {
+    callSetupRef.current = setTimeout(async () => {
+      callSetupRef.current = null;
+      // If user already hung up during the ringing delay, bail out
+      if (callAbortedRef.current) return;
       try {
         const session = new GeminiLiveSession({
           character,
@@ -868,11 +874,22 @@ export default function App() {
   };
 
   const handleHangUp = async () => {
+    // Cancel the ringing-delay timeout if still pending
+    callAbortedRef.current = true;
+    if (callSetupRef.current) {
+      clearTimeout(callSetupRef.current);
+      callSetupRef.current = null;
+    }
     if (sessionRef.current) {
       sessionRef.current.disconnect();
       sessionRef.current = null;
     }
     clearInterval(timerRef.current);
+    setCallState('idle');
+    setInputLevel(0);
+    setOutputLevel(0);
+    setDuration(0);
+    setError(null);
 
     if (dbRecordIdRef.current) {
       try {
