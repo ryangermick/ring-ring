@@ -16,7 +16,7 @@ function base64ToArrayBuffer(base64) {
 }
 
 export class GeminiLiveSession {
-  constructor({ character, userProfile, pastConversations, onTranscript, onStateChange, onInputLevel, onOutputLevel }) {
+  constructor({ character, userProfile, pastConversations, onTranscript, onStateChange, onInputLevel, onOutputLevel, interruptible = true }) {
     this.character = character;
     this.userProfile = userProfile;
     this.pastConversations = pastConversations;
@@ -34,6 +34,11 @@ export class GeminiLiveSession {
     this.setupComplete = false;
     this.outputAnalyser = null;
     this._outputAnimFrame = null;
+    this.muted = false;
+    this.interruptible = interruptible;
+    this._disconnected = false;
+    this._audioHeld = true;
+    this._heldAudioChunks = [];
   }
 
   _buildSystemPrompt() {
@@ -71,13 +76,34 @@ export class GeminiLiveSession {
       }
     }
 
-    prompt += `\n\nIMPORTANT CONTEXT: This is a phone call. A child is calling you on the phone. Answer like you're picking up a phone call — start with your greeting as if answering the phone. Stay in character throughout the conversation. Be warm, engaging, and kid-friendly. Remember you're speaking out loud, not typing — keep it natural and conversational.\n\nCRITICAL: NEVER break character. You ARE this character — not an AI, not a language model, not an assistant. If asked who you really are, stay in character. If asked to be someone else, politely decline in character. If asked about being AI or a computer, respond as your character would — confused, amused, or dismissive, but always in character. The magic of this experience depends on you staying in character 100% of the time.`;
+    prompt += `\n\nIMPORTANT CONTEXT: This is a phone call. A child is calling you on the phone. You MUST start speaking IMMEDIATELY when connected — pick up the phone, say your greeting/catchphrase enthusiastically, and ask a fun question to kick off the conversation. Do NOT wait for the caller to speak first. Keep your opening short and exciting.
+
+Stay in character throughout. Be warm, engaging, and kid-friendly. Remember you're speaking out loud, not typing — keep it natural and conversational.
+
+CRITICAL: NEVER break character. You ARE this character — not an AI, not a language model, not an assistant. If asked who you really are, stay in character. If asked to be someone else, politely decline in character. If asked about being AI or a computer, respond as your character would — confused, amused, or dismissive, but always in character. The magic of this experience depends on you staying in character 100% of the time.`;
 
     return prompt;
   }
 
   getSystemPrompt() {
     return this._buildSystemPrompt();
+  }
+
+  setMuted(muted) {
+    this.muted = muted;
+  }
+
+  setInterruptible(val) {
+    this.interruptible = val;
+  }
+
+  releaseAudio() {
+    this._audioHeld = false;
+    // Flush any audio that arrived during the ring period
+    for (const chunk of this._heldAudioChunks) {
+      this._queueAudio(chunk);
+    }
+    this._heldAudioChunks = [];
   }
 
   async connect() {
@@ -125,12 +151,12 @@ export class GeminiLiveSession {
           this.onStateChange?.('connected');
           this._startMicrophone();
 
-          // Send initial prompt so the character greets the kid first
+          // Trigger the character to greet — keep it short for speed
           this.ws.send(JSON.stringify({
             clientContent: {
               turns: [{
                 role: 'user',
-                parts: [{ text: `A child just called you! Greet them enthusiastically in character. Say your catchphrase and ask them a fun question to start the conversation. Keep it short and exciting — you're picking up the phone!` }]
+                parts: [{ text: 'Ring ring! Someone is calling you — pick up the phone!' }]
               }],
               turnComplete: true
             }
@@ -153,7 +179,11 @@ export class GeminiLiveSession {
             const parts = serverContent.modelTurn.parts || [];
             for (const part of parts) {
               if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
-                this._queueAudio(part.inlineData.data);
+                if (this._audioHeld) {
+                  this._heldAudioChunks.push(part.inlineData.data);
+                } else {
+                  this._queueAudio(part.inlineData.data);
+                }
               }
               // Ignore part.text — that's internal thinking/reasoning, not spoken words
             }
@@ -178,7 +208,10 @@ export class GeminiLiveSession {
 
       this.ws.onclose = (event) => {
         console.log('WebSocket closed:', event.code, event.reason);
-        this.onStateChange?.('disconnected');
+        // Full cleanup on unexpected close to prevent ghost sessions
+        if (!this._disconnected) {
+          this.disconnect();
+        }
       };
 
       setTimeout(() => reject(new Error('Connection timeout')), 15000);
@@ -217,6 +250,10 @@ export class GeminiLiveSession {
 
       this.processor.onaudioprocess = (e) => {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (this.muted || (!this.interruptible && this.isPlaying)) {
+          this.onInputLevel?.(0);
+          return;
+        }
 
         const inputData = e.inputBuffer.getChannelData(0);
 
@@ -338,6 +375,9 @@ export class GeminiLiveSession {
   }
 
   disconnect() {
+    if (this._disconnected) return;
+    this._disconnected = true;
+
     if (this._outputAnimFrame) {
       cancelAnimationFrame(this._outputAnimFrame);
       this._outputAnimFrame = null;

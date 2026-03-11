@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import VoiceTest from './VoiceTest';
 import { defaultCharacters, franchises, VOICE_OPTIONS } from './data/characters';
 import { supabase } from './lib/supabase';
 import { GeminiLiveSession } from './lib/gemini-live';
@@ -566,6 +567,13 @@ function CharacterEditor({ char, setChar, onSave, onDelete, saving, user, sampli
   );
 }
 
+function AppRouter() {
+  if (window.location.pathname === '/voice-test') return <VoiceTest />;
+  return <App />;
+}
+
+export { AppRouter };
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [screen, setScreenRaw] = useState('login');
@@ -638,7 +646,7 @@ export default function App() {
   // Settings state
   const [settings, setSettings] = useState({
     sound_effects: true, auto_save_transcripts: true,
-    default_voice: 'Puck', call_timer_visible: true, debug_mode: false,
+    default_voice: 'Puck', call_timer_visible: true, debug_mode: false, interruptible: true,
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -675,6 +683,7 @@ export default function App() {
   const sessionRef = useRef(null);
   const [debugPrompt, setDebugPrompt] = useState(null);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [muted, setMuted] = useState(false);
   const timerRef = useRef(null);
   const callSetupRef = useRef(null);
   const callAbortedRef = useRef(false);
@@ -735,7 +744,7 @@ export default function App() {
       if (data) {
         const s = {
           sound_effects: data.sound_effects ?? true, auto_save_transcripts: data.auto_save_transcripts ?? true,
-          default_voice: data.default_voice || 'Puck', call_timer_visible: data.call_timer_visible ?? true, debug_mode: data.debug_mode ?? false,
+          default_voice: data.default_voice || 'Puck', call_timer_visible: data.call_timer_visible ?? true, debug_mode: data.debug_mode ?? false, interruptible: data.interruptible ?? true,
         };
         setSettings(s);
         localStorage.setItem('ring_settings', JSON.stringify(s));
@@ -794,6 +803,7 @@ export default function App() {
     setScreen('call', character.id);
     callAbortedRef.current = false;
     setCallState('ringing');
+    setMuted(false);
     setDuration(0);
     setError(null);
     transcriptRef.current = [];
@@ -830,48 +840,63 @@ export default function App() {
       }
     } catch (err) { console.error('Failed to load past convos:', err); }
 
-    callSetupRef.current = setTimeout(async () => {
-      callSetupRef.current = null;
-      // If user already hung up during the ringing delay, bail out
+    // Start connecting immediately — ring plays in parallel
+    const session = new GeminiLiveSession({
+      character,
+      userProfile: profile,
+      pastConversations,
+      interruptible: settings.interruptible,
+      onStateChange: (state) => {
+        if (callAbortedRef.current) return;
+        // Keep ringing until we release audio
+        if (state === 'listening' || state === 'connected') {
+          setCallState(prev => prev === 'ringing' ? 'ringing' : state);
+        } else {
+          setCallState(state);
+        }
+        if (state === 'error' || state === 'mic-error') {
+          setError(state === 'mic-error' ? 'Microphone access denied. Please allow mic access and try again.' : 'Connection failed. Check your internet and try again.');
+        }
+        // Auto-cleanup on unexpected disconnect
+        if (state === 'disconnected' && sessionRef.current) {
+          sessionRef.current = null;
+          clearInterval(timerRef.current);
+          setInputLevel(0);
+          setOutputLevel(0);
+          setCallState('idle');
+        }
+      },
+      onTranscript: (role, text) => {
+        const arr = transcriptRef.current;
+        const last = arr[arr.length - 1];
+        if (last && last.role === role) {
+          last.text += text;
+        } else {
+          arr.push({ role, text, ts: Date.now() });
+        }
+      },
+      onInputLevel: setInputLevel,
+      onOutputLevel: setOutputLevel,
+    });
+
+    sessionRef.current = session;
+    setDebugPrompt(session.getSystemPrompt());
+
+    // Connect in background while ring plays
+    session.connect().catch((err) => {
       if (callAbortedRef.current) return;
-      try {
-        const session = new GeminiLiveSession({
-          character,
-          userProfile: profile,
-          pastConversations,
-          onStateChange: (state) => {
-            // Keep ringing until character actually speaks (masks connection latency)
-            if (state === 'listening' || state === 'connected') {
-              setCallState(prev => prev === 'ringing' ? 'ringing' : state);
-            } else {
-              setCallState(state);
-            }
-            if (state === 'error' || state === 'mic-error') {
-              setError(state === 'mic-error' ? 'Microphone access denied. Please allow mic access and try again.' : 'Connection failed. Check your internet and try again.');
-            }
-          },
-          onTranscript: (role, text) => {
-            const arr = transcriptRef.current;
-            const last = arr[arr.length - 1];
-            if (last && last.role === role) {
-              // Accumulate into the same turn
-              last.text += text;
-            } else {
-              arr.push({ role, text, ts: Date.now() });
-            }
-          },
-          onInputLevel: setInputLevel,
-          onOutputLevel: setOutputLevel,
-        });
-        await session.connect();
-        sessionRef.current = session;
-        setDebugPrompt(session.getSystemPrompt());
-      } catch (err) {
-        console.error('Call failed:', err);
-        setCallState('error');
-        setError(`Connection failed: ${err.message}`);
-      }
-    }, 2000);
+      console.error('Call failed:', err);
+      setCallState('error');
+      setError(`Connection failed: ${err.message}`);
+    });
+
+    // After ring period, release held audio so the character's voice plays
+    callSetupRef.current = setTimeout(() => {
+      callSetupRef.current = null;
+      if (callAbortedRef.current) return;
+      setCallState('connected');
+      session.releaseAudio();
+    }, 1200);
   };
 
   const handleHangUp = async () => {
@@ -1254,7 +1279,7 @@ export default function App() {
           <div className="w-full h-16 mb-3">
             {(listening || speaking) ? (
               <AudioVisualizer
-                inputLevel={inputLevel}
+                inputLevel={muted && !speaking ? 0 : inputLevel}
                 outputLevel={outputLevel}
                 isActive={true}
                 isSpeaking={speaking}
@@ -1268,15 +1293,39 @@ export default function App() {
             )}
           </div>
 
-          {/* Timer + hang up */}
+          {/* Timer + controls */}
           <div className="flex flex-col items-center gap-5">
             {settings.call_timer_visible && <span className="font-mono text-xs tracking-widest text-slate-400">{fmt(duration)}</span>}
-            <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }}
-              className="w-16 h-16 bg-[#EA4335] rounded-full flex items-center justify-center shadow-lg shadow-[#EA4335]/20 active:scale-90 hover:bg-[#D33828] transition-all duration-200">
-              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.73-1.68-1.36-2.66-1.85a.994.994 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
-              </svg>
-            </button>
+            <div className="flex items-center gap-6">
+              {/* Mute button */}
+              <button onClick={() => {
+                  const next = !muted;
+                  setMuted(next);
+                  sessionRef.current?.setMuted(next);
+                }}
+                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 ${
+                  muted ? 'bg-[#EA4335]/10' : 'bg-slate-100 hover:bg-slate-200'
+                }`}>
+                {muted ? (
+                  <svg className="w-6 h-6 text-[#EA4335]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 9.34V4a3 3 0 00-5.94-.6M9 9v3a3 3 0 005.12 2.12M3 3l18 18" />
+                    <path d="M19 10v1a7 7 0 01-11.48 5.38M5 10v1a7 7 0 00.91 3.46M12 19v3m-4 0h8" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Hang up button */}
+              <button onClick={async () => { await handleHangUp(); setScreen('shelf'); }}
+                className="w-16 h-16 bg-[#EA4335] rounded-full flex items-center justify-center shadow-lg shadow-[#EA4335]/20 active:scale-90 hover:bg-[#D33828] transition-all duration-200">
+                <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.73-1.68-1.36-2.66-1.85a.994.994 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* AI disclaimer + debug toggle */}
@@ -1617,6 +1666,7 @@ export default function App() {
       { key: 'sound_effects', label: 'Sound Effects', desc: 'Play ring sound on calls', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg> },
       { key: 'auto_save_transcripts', label: 'Auto-save Transcripts', desc: 'Save call transcripts automatically', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg> },
       { key: 'call_timer_visible', label: 'Call Timer Visible', desc: 'Show timer during calls', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+      { key: 'interruptible', label: 'Allow Interruptions', desc: 'Talk over characters to interrupt them', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg> },
       { key: 'debug_mode', label: 'Debug Mode', desc: 'Show system prompt during calls', icon: <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg> },
     ];
     return (
