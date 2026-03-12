@@ -1,6 +1,16 @@
 {
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/history", "destination": "/index.html" },
+    { "source": "/characters", "destination": "/index.html" },
+    { "source": "/characters/:slug", "destination": "/index.html" },
+    { "source": "/profile", "destination": "/index.html" },
+    { "source": "/settings", "destination": "/index.html" },
+    { "source": "/login", "destination": "/index.html" },
+    { "source": "/call", "destination": "/index.html" },
+    { "source": "/transcript", "destination": "/index.html" },
+    { "source": "/about", "destination": "/index.html" },
+    { "source": "/voice-test", "destination": "/index.html" },
+    { "source": "/:slug", "destination": "/api/share?id=:slug" }
   ],
   "headers": [
     {

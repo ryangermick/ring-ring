@@ -1065,14 +1065,35 @@ export default function App() {
 
   /* ═══════════════════ SIGN IN ═══════════════════ */
   if (screen === 'login') {
+    // Check if URL points to a specific character
+    const slug = window.location.pathname.slice(1);
+    const loginChar = slug && slug !== 'login' ? defaultCharacters.find(c => c.id === slug) : null;
     return (
-      <div className="min-h-dvh bg-[#FFFBF5] flex flex-col items-center justify-center px-12">
+      <div className="min-h-dvh bg-[#FFFBF5] flex flex-col items-center justify-center px-6 sm:px-12">
         <GlobalStyles />
         <div className="flex flex-col items-center -mt-8">
-          <img src="/logo-trimmed.png" alt="Ring Ring Ring" className="w-72 sm:w-96 mb-4 select-none" />
-          <p className="text-base text-slate-400 font-medium mt-2 mb-16 text-center max-w-xs">
-            Talk to your favorite characters
-          </p>
+          {loginChar ? (
+            <>
+              <div className="relative mb-6">
+                <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-white shadow-lg shadow-black/5 border-2 border-white overflow-hidden flex items-center justify-center">
+                  <img src={loginChar.image} alt={loginChar.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-green-400 border-3 border-[#FFFBF5] flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                </div>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#1A1A2E] mb-1">{loginChar.name}</h2>
+              <p className="text-sm sm:text-base text-slate-400 font-medium mb-2 text-center max-w-xs">{loginChar.description}</p>
+              <p className="text-xs text-slate-300 mb-10 text-center">Sign in to start a voice call</p>
+            </>
+          ) : (
+            <>
+              <img src="/logo-trimmed.png" alt="Ring Ring Ring" className="w-72 sm:w-96 mb-4 select-none" />
+              <p className="text-base text-slate-400 font-medium mt-2 mb-16 text-center max-w-xs">
+                Talk to your favorite characters
+              </p>
+            </>
+          )}
           <button onClick={handleLogin}
             className="flex items-center gap-3 bg-[#4285F4] hover:bg-[#3B78DB] text-white rounded-full px-8 py-3 font-semibold text-base shadow-md shadow-[#4285F4]/20 active:scale-[0.97] transition-all duration-200">
             <svg className="w-6 h-6" viewBox="0 0 24 24">
@@ -1083,6 +1104,12 @@ export default function App() {
             </svg>
             Continue with Google
           </button>
+          {loginChar && (
+            <button onClick={() => { window.history.pushState(null, '', '/'); setScreenRaw('login'); }}
+              className="mt-4 text-sm text-slate-400 hover:text-slate-600 transition-colors">
+              ← Browse all characters
+            </button>
+          )}
         </div>
       </div>
     );
