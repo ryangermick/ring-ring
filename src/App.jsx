@@ -793,7 +793,7 @@ export default function App() {
 
   const handleLogin = () => supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.origin }
+    options: { redirectTo: window.location.href }
   });
 
   const handleLogout = async () => {
