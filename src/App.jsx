@@ -768,8 +768,14 @@ export default function App() {
         return;
       }
       const mapped = pathToScreen[path];
-      if (mapped && mapped !== 'login') setScreenRaw(mapped);
-      else setScreenRaw('shelf');
+      if (mapped && mapped !== 'login') { setScreenRaw(mapped); return; }
+      // Top-level /<slug> → open that character's call
+      const slug = path.slice(1);
+      if (slug && slug !== 'login') {
+        const char = defaultCharacters.find(c => c.id === slug);
+        if (char) { setActiveCharacter(char); setScreenRaw('call'); return; }
+      }
+      setScreenRaw('shelf');
     };
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
