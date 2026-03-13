@@ -1105,10 +1105,13 @@ export default function App() {
             Continue with Google
           </button>
           {loginChar && (
-            <button onClick={() => { window.history.pushState(null, '', '/'); setScreenRaw('login'); }}
-              className="mt-4 text-sm text-slate-400 hover:text-slate-600 transition-colors">
-              ← Browse all characters
-            </button>
+            <>
+              <button onClick={() => { window.history.pushState(null, '', '/'); setScreenRaw('login'); }}
+                className="mt-4 text-sm text-slate-400 hover:text-slate-600 transition-colors">
+                ← Browse all characters
+              </button>
+              <img src="/logo-trimmed.png" alt="Ring Ring Ring" className="w-40 sm:w-52 mt-10 opacity-60 select-none" />
+            </>
           )}
         </div>
       </div>
