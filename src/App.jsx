@@ -164,7 +164,7 @@ function useRingSound(isRinging) {
 }
 
 /* ═══════════ Avatar Component ═══════════ */
-const CharAvatar = ({ src, alt, size = 'md', className = '', contain = false }) => {
+const CharAvatar = ({ src, alt, size = 'md', className = '' }) => {
   const sizes = {
     sm: 'w-10 h-10',
     md: 'w-14 h-14',
@@ -173,7 +173,7 @@ const CharAvatar = ({ src, alt, size = 'md', className = '', contain = false }) 
   };
   return (
     <div className={`${sizes[size]} rounded-full overflow-hidden bg-white relative shrink-0 ${className}`}>
-      <img src={src} alt={alt} className={`absolute inset-0 w-full h-full ${contain ? 'object-contain scale-125' : 'object-cover object-[50%_30%]'}`} />
+      <img src={src} alt={alt} className={"absolute inset-0 w-full h-full object-cover object-[50%_30%]"} />
     </div>
   );
 };
@@ -1091,7 +1091,7 @@ export default function App() {
             <>
               <div className="relative mb-6">
                 <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-white shadow-lg shadow-black/5 border-2 border-white overflow-hidden flex items-center justify-center">
-                  <img src={loginChar.image} alt={loginChar.name} className={`w-full h-full ${loginChar.franchise === 'dog-man' ? 'object-contain scale-125' : 'object-cover'}`} />
+                  <img src={loginChar.image} alt={loginChar.name} className={`w-full h-full ${'object-cover'}`} />
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-green-400 border-3 border-[#FFFBF5] flex items-center justify-center">
                   <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
@@ -1235,7 +1235,7 @@ export default function App() {
                     <button key={char.id} onClick={() => startCall(char)}
                       className="group flex flex-col items-center gap-3 outline-none active:scale-[0.93] transition-transform duration-150">
                       <div className="shadow-md group-hover:shadow-xl group-hover:scale-[1.05] transition-all duration-200 rounded-full">
-                        <CharAvatar src={char.image} alt={char.name} size="lg" contain={char.franchise === 'dog-man'} />
+                        <CharAvatar src={char.image} alt={char.name} size="lg"  />
                       </div>
                       <span className="text-xs sm:text-sm font-bold text-slate-500 group-hover:text-[#4285F4] transition-colors text-center leading-tight">
                         {char.name}
@@ -1260,7 +1260,7 @@ export default function App() {
                     <button key={char.id} onClick={() => startCall(char)}
                       className="group flex flex-col items-center gap-3 outline-none active:scale-[0.93] transition-transform duration-150">
                       <div className="shadow-md group-hover:shadow-xl group-hover:scale-[1.05] transition-all duration-200 rounded-full">
-                        <CharAvatar src={char.image} alt={char.name} size="lg" contain={char.franchise === 'dog-man'} />
+                        <CharAvatar src={char.image} alt={char.name} size="lg"  />
                       </div>
                       <span className="text-xs sm:text-sm font-bold text-slate-500 group-hover:text-[#4285F4] transition-colors text-center leading-tight">
                         {char.name}
@@ -1293,7 +1293,7 @@ export default function App() {
                     <button key={char.id} onClick={() => startCall(char)}
                       className="group flex flex-col items-center gap-3 outline-none active:scale-[0.93] transition-transform duration-150">
                       <div className="shadow-md group-hover:shadow-xl group-hover:scale-[1.05] transition-all duration-200 rounded-full">
-                        <CharAvatar src={char.image} alt={char.name} size="lg" contain={char.franchise === 'dog-man'} />
+                        <CharAvatar src={char.image} alt={char.name} size="lg"  />
                       </div>
                       <span className="text-xs sm:text-sm font-bold text-slate-500 group-hover:text-[#4285F4] transition-colors text-center leading-tight">
                         {char.name}
@@ -1403,7 +1403,7 @@ export default function App() {
         {/* Massive character image — seamless with white bg */}
         <div className="flex-1 flex flex-col items-center justify-center w-full pt-20 pb-0 overflow-hidden">
           <img src={activeCharacter.image} alt={activeCharacter.name}
-            className={`${activeCharacter.franchise === 'dog-man' ? 'w-[70vw] max-w-[400px]' : 'w-[130vw] max-w-[800px]'} object-contain transition-transform duration-500 ${speaking ? 'scale-[1.06]' : ''}`} />
+            className={`w-[130vw] max-w-[800px] object-contain transition-transform duration-500 ${speaking ? 'scale-[1.06]' : ''}`} />
         </div>
 
         {/* Bottom controls area */}
@@ -1555,7 +1555,7 @@ export default function App() {
                       {/* Tap avatar/name area to view transcript */}
                       <button onClick={() => { setViewingTranscript(rec); loadTranscript(rec.id); setScreen('transcript'); }}
                         className="flex items-center gap-4 flex-1 min-w-0 text-left">
-                        <CharAvatar src={char.image} alt={char.name} size="md" contain={char.franchise === 'dog-man'} />
+                        <CharAvatar src={char.image} alt={char.name} size="md"  />
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-[#1A1A2E]">{char.name}</p>
                           <p className="text-[13px] text-slate-400 mt-0.5">
@@ -1616,7 +1616,7 @@ export default function App() {
         <main className="max-w-3xl mx-auto px-8 sm:px-12 pt-8 pb-20">
           {/* Call info */}
           <div className="flex items-center gap-4 mb-8">
-            {char && <CharAvatar src={char.image} alt={char.name} size="md" contain={char.franchise === 'dog-man'} />}
+            {char && <CharAvatar src={char.image} alt={char.name} size="md"  />}
             <div>
               <p className="font-bold text-[#1A1A2E] text-lg">{char?.name || 'Unknown'}</p>
               <p className="text-sm text-slate-400">
@@ -1679,7 +1679,7 @@ export default function App() {
                   {chars.map(char => (
                     <button key={char.id} onClick={() => { setEditingChar({...char}); window.history.pushState(null, "", `/characters/${char.id}`); }}
                       className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow text-left w-full">
-                      <CharAvatar src={char.image} alt={char.name} size="sm" contain={char.franchise === 'dog-man'} />
+                      <CharAvatar src={char.image} alt={char.name} size="sm"  />
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-[#1A1A2E] text-sm">{char.name}</p>
                         <p className="text-xs text-slate-400 truncate">{char.description}</p>
@@ -1714,7 +1714,7 @@ export default function App() {
                   {chars.map(char => (
                     <button key={char.id} onClick={() => { setEditingChar({...char}); window.history.pushState(null, "", `/characters/${char.id}`); }}
                       className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow text-left w-full">
-                      <CharAvatar src={char.image} alt={char.name} size="sm" contain={char.franchise === 'dog-man'} />
+                      <CharAvatar src={char.image} alt={char.name} size="sm"  />
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-[#1A1A2E] text-sm">{char.name}</p>
                         <p className="text-xs text-slate-400 truncate">{char.description}</p>
