@@ -791,35 +791,17 @@ export default function App() {
       }
       setScreenRaw('shelf');
     };
-    // If the URL has a hash fragment with access_token, Supabase needs time
-    // to exchange it. Don't clear authLoading from getSession() in that case —
-    // wait for onAuthStateChange to fire with the parsed token instead.
-    const hasHashToken = window.location.hash.includes('access_token');
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) { restoreScreen(); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
-      if (!hasHashToken) setAuthLoading(false);
+      setAuthLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) {
-        restoreScreen();
-        loadCharacters();
-        loadProfile(session.user.id);
-        loadSettings(session.user.id);
-        // Clean up the hash fragment from the URL
-        if (window.location.hash.includes('access_token')) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      }
+      if (session?.user) { restoreScreen(); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
       setAuthLoading(false);
     });
-    // Safety timeout: if hash token processing takes too long, show login anyway
-    let safetyTimer;
-    if (hasHashToken) {
-      safetyTimer = setTimeout(() => setAuthLoading(false), 5000);
-    }
-    return () => { subscription.unsubscribe(); clearTimeout(safetyTimer); };
+    return () => subscription.unsubscribe();
   }, [loadCharacters, loadProfile, loadSettings]);
 
   useEffect(() => {
