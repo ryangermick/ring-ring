@@ -158,7 +158,7 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
 
             // Send starter message to trigger character greeting
             try {
-              session.send({ text: 'Ring ring! Someone is calling you — pick up the phone!' });
+              session.sendClientContent({ turns: 'Ring ring! Someone is calling you — pick up the phone!' });
             } catch (e) {
               console.error('Starter send error:', e);
             }
