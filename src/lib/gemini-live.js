@@ -214,7 +214,7 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
         }
       };
 
-      setTimeout(() => reject(new Error('Connection timeout')), 15000);
+      setTimeout(() => reject(new Error('Connection timeout')), 30000);
     });
   }
 
@@ -245,6 +245,8 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
       });
 
       const micContext = new AudioContext({ sampleRate: 16000 });
+      const actualMicRate = micContext.sampleRate;
+      const needsResample = actualMicRate !== 16000;
       const source = micContext.createMediaStreamSource(this.mediaStream);
       this.processor = micContext.createScriptProcessor(4096, 1, 1);
 
@@ -255,7 +257,18 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
           return;
         }
 
-        const inputData = e.inputBuffer.getChannelData(0);
+        let inputData = e.inputBuffer.getChannelData(0);
+
+        // Downsample if browser didn't honor 16kHz request
+        if (needsResample) {
+          const ratio = actualMicRate / 16000;
+          const newLength = Math.floor(inputData.length / ratio);
+          const resampled = new Float32Array(newLength);
+          for (let i = 0; i < newLength; i++) {
+            resampled[i] = inputData[Math.floor(i * ratio)];
+          }
+          inputData = resampled;
+        }
 
         // Calculate input level for visualizer
         if (this.onInputLevel) {

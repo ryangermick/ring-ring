@@ -690,6 +690,8 @@ export default function App() {
   const timerRef = useRef(null);
   const callSetupRef = useRef(null);
   const callAbortedRef = useRef(false);
+  const pendingSlugRef = useRef(null);
+  const callReleasedRef = useRef(false);
   const transcriptRef = useRef([]);
   const dbRecordIdRef = useRef(null);
 
@@ -721,6 +723,15 @@ export default function App() {
           return ai - bi;
         });
         setCharacters(mapped);
+        // Resolve pending slug from URL if character wasn't in defaults
+        if (pendingSlugRef.current) {
+          const pendingChar = mapped.find(c => c.id === pendingSlugRef.current);
+          if (pendingChar) {
+            setActiveCharacter(pendingChar);
+            setScreenRaw('call');
+          }
+          pendingSlugRef.current = null;
+        }
       }
     } catch (err) {
       console.error('Failed to load characters:', err);
@@ -774,6 +785,8 @@ export default function App() {
       if (slug && slug !== 'login') {
         const char = defaultCharacters.find(c => c.id === slug);
         if (char) { setActiveCharacter(char); setScreenRaw('call'); return; }
+        // Character might be DB-only (not in defaults); store slug to resolve after load
+        pendingSlugRef.current = slug;
       }
       setScreenRaw('shelf');
     };
@@ -811,6 +824,7 @@ export default function App() {
     setActiveCharacter(character);
     setScreen('call', character.id);
     callAbortedRef.current = false;
+    callReleasedRef.current = false;
     setCallState('ringing');
     setMuted(false);
     setDuration(0);
@@ -857,12 +871,11 @@ export default function App() {
       interruptible: settings.interruptible,
       onStateChange: (state) => {
         if (callAbortedRef.current) return;
-        // Keep ringing until we release audio
-        if (state === 'listening' || state === 'connected') {
-          setCallState(prev => prev === 'ringing' ? 'ringing' : state);
-        } else {
-          setCallState(state);
+        // Suppress state changes until audio is released after ring period
+        if (!callReleasedRef.current && (state === 'listening' || state === 'connected')) {
+          return;
         }
+        setCallState(state);
         if (state === 'error' || state === 'mic-error') {
           setError(state === 'mic-error' ? 'Microphone access denied. Please allow mic access and try again.' : 'Connection failed. Check your internet and try again.');
         }
@@ -872,7 +885,8 @@ export default function App() {
           clearInterval(timerRef.current);
           setInputLevel(0);
           setOutputLevel(0);
-          setCallState('idle');
+          setError('Call dropped — tap to redial');
+          setCallState('error');
         }
       },
       onTranscript: (role, text) => {
@@ -903,6 +917,7 @@ export default function App() {
     callSetupRef.current = setTimeout(() => {
       callSetupRef.current = null;
       if (callAbortedRef.current) return;
+      callReleasedRef.current = true;
       setCallState('connected');
       session.releaseAudio();
     }, 1200);
