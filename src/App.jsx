@@ -576,6 +576,7 @@ export { AppRouter };
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [screen, setScreenRaw] = useState('login');
   const [activeCharacter, setActiveCharacter] = useState(null);
   const [callState, setCallState] = useState('idle');
@@ -793,10 +794,12 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) { restoreScreen(); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
+      setAuthLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) { restoreScreen(); loadCharacters(); loadProfile(session.user.id); loadSettings(session.user.id); }
+      setAuthLoading(false);
     });
     return () => subscription.unsubscribe();
   }, [loadCharacters, loadProfile, loadSettings]);
@@ -1077,6 +1080,16 @@ export default function App() {
   };
 
   const fmt = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+
+  /* ═══════════════════ AUTH LOADING ═══════════════════ */
+  if (authLoading) {
+    return (
+      <div className="min-h-dvh bg-[#FFFBF5] flex items-center justify-center">
+        <GlobalStyles />
+        <div className="animate-pulse text-2xl">📞</div>
+      </div>
+    );
+  }
 
   /* ═══════════════════ SIGN IN ═══════════════════ */
   if (screen === 'login') {
