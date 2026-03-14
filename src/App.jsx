@@ -173,7 +173,7 @@ const CharAvatar = ({ src, alt, size = 'md', className = '', contain = false }) 
   };
   return (
     <div className={`${sizes[size]} rounded-full overflow-hidden bg-white relative shrink-0 ${className}`}>
-      <img src={src} alt={alt} className={`absolute inset-0 w-full h-full ${contain ? 'object-contain' : 'object-cover object-[50%_30%]'}`} />
+      <img src={src} alt={alt} className={`absolute inset-0 w-full h-full ${contain ? 'object-contain scale-125' : 'object-cover object-[50%_30%]'}`} />
     </div>
   );
 };
@@ -1091,7 +1091,7 @@ export default function App() {
             <>
               <div className="relative mb-6">
                 <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-white shadow-lg shadow-black/5 border-2 border-white overflow-hidden flex items-center justify-center">
-                  <img src={loginChar.image} alt={loginChar.name} className={`w-full h-full ${loginChar.franchise === 'dog-man' ? 'object-contain' : 'object-cover'}`} />
+                  <img src={loginChar.image} alt={loginChar.name} className={`w-full h-full ${loginChar.franchise === 'dog-man' ? 'object-contain scale-125' : 'object-cover'}`} />
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-green-400 border-3 border-[#FFFBF5] flex items-center justify-center">
                   <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>

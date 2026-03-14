@@ -27,3 +27,5 @@ dist-ssr
 .env*.local
 .env.prod
 .env.check
+sync-dogman-prompts.mjs
+public/characters/originals/
