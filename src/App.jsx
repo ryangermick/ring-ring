@@ -164,9 +164,7 @@ function useRingSound(isRinging) {
 }
 
 /* ═══════════ Avatar Component ═══════════ */
-const DOG_MAN_IMAGES = ['/characters/dog-man.png', '/characters/lil-petey.png', '/characters/petey-cat.png', '/characters/chief.png', '/characters/sarah-hatoff.png', '/characters/eighty-hd.png'];
-const CharAvatar = ({ src, alt, size = 'md', className = '', contain }) => {
-  if (contain === undefined) contain = DOG_MAN_IMAGES.includes(src);
+const CharAvatar = ({ src, alt, size = 'md', className = '' }) => {
   const sizes = {
     sm: 'w-10 h-10',
     md: 'w-14 h-14',
@@ -175,7 +173,7 @@ const CharAvatar = ({ src, alt, size = 'md', className = '', contain }) => {
   };
   return (
     <div className={`${sizes[size]} rounded-full overflow-hidden bg-white relative shrink-0 ${className}`}>
-      <img src={src} alt={alt} className={`absolute inset-0 w-full h-full ${contain ? 'object-contain p-1' : 'object-cover object-[50%_30%]'}`} />
+      <img src={src} alt={alt} className={"absolute inset-0 w-full h-full object-cover object-[50%_30%]"} />
     </div>
   );
 };
