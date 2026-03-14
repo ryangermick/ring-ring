@@ -1,10 +1,9 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+import { GoogleGenAI, Modality } from '@google/genai';
 
-async function blobToJSON(blob) {
-  const text = await blob.text();
-  return JSON.parse(text);
-}
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+const SAMPLE_RATE_INPUT = 16000;
+const SAMPLE_RATE_OUTPUT = 24000;
 
 function base64ToArrayBuffer(base64) {
   const binaryString = atob(base64);
@@ -13,6 +12,14 @@ function base64ToArrayBuffer(base64) {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes.buffer;
+}
+
+function float32ToPcmBase64(float32Data) {
+  const pcm16 = new Int16Array(float32Data.length);
+  for (let i = 0; i < float32Data.length; i++) {
+    pcm16[i] = Math.max(-32768, Math.min(32767, Math.floor(float32Data[i] * 32768)));
+  }
+  return btoa(String.fromCharCode(...new Uint8Array(pcm16.buffer)));
 }
 
 export class GeminiLiveSession {
@@ -24,15 +31,20 @@ export class GeminiLiveSession {
     this.onStateChange = onStateChange;
     this.onInputLevel = onInputLevel;
     this.onOutputLevel = onOutputLevel;
-    this.ws = null;
-    this.audioContext = null;
+
+    // SDK session
+    this._session = null;
+
+    // Separate audio contexts for input and output
+    this._inputCtx = null;   // 16 kHz for mic capture
+    this._outputCtx = null;  // 24 kHz for playback
+
     this.mediaStream = null;
     this.processor = null;
     this.isPlaying = false;
-    this.activeSources = [];
+    this.activeSources = new Set();
     this.nextPlayTime = 0;
-    this.setupComplete = false;
-    this.outputAnalyser = null;
+    this._outputAnalyser = null;
     this._outputAnimFrame = null;
     this.muted = false;
     this.interruptible = interruptible;
@@ -109,149 +121,139 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
   async connect() {
     this.onStateChange?.('connecting');
 
-    // Audio context created lazily in _ensureAudioContext() to comply with autoplay policy
-    // Open WebSocket
-    this.ws = new WebSocket(WS_URL);
+    const client = new GoogleGenAI({ apiKey: API_KEY });
+    const systemPrompt = this._buildSystemPrompt();
 
-    return new Promise((resolve, reject) => {
-      this.ws.onopen = () => {
-        const setupMessage = {
-          setup: {
-            model: 'models/gemini-2.5-flash-native-audio-preview-12-2025',
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: {
-                    voiceName: this.character.voiceName || 'Kore'
+    // Track whether onopen has fired for starter message
+    let resolveConnect, rejectConnect;
+    const connectPromise = new Promise((res, rej) => { resolveConnect = res; rejectConnect = rej; });
+
+    // Connection timeout
+    const timeout = setTimeout(() => rejectConnect(new Error('Connection timeout')), 30000);
+
+    try {
+      const session = await client.live.connect({
+        model: LIVE_MODEL,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: this.character.voiceName || 'Kore'
+              }
+            }
+          },
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          systemInstruction: systemPrompt,
+        },
+        callbacks: {
+          onopen: async () => {
+            clearTimeout(timeout);
+            console.log('[RingRing] SDK connected');
+            this.onStateChange?.('connected');
+
+            // Start microphone capture
+            await this._startMicrophone();
+
+            // Send starter message to trigger character greeting
+            try {
+              session.send({ text: 'Ring ring! Someone is calling you — pick up the phone!' });
+            } catch (e) {
+              console.error('Starter send error:', e);
+            }
+
+            resolveConnect();
+          },
+
+          onmessage: (message) => {
+            if (this._disconnected) return;
+            const serverContent = message.serverContent;
+            if (!serverContent) return;
+
+            // Handle interruption
+            if (serverContent.interrupted) {
+              this._stopPlayback();
+              this.onStateChange?.('listening');
+              return;
+            }
+
+            // Handle audio data
+            if (serverContent.modelTurn) {
+              const parts = serverContent.modelTurn.parts || [];
+              for (const part of parts) {
+                const audioData = part.inlineData?.data;
+                if (audioData && part.inlineData?.mimeType?.startsWith('audio/pcm')) {
+                  if (this._audioHeld) {
+                    this._heldAudioChunks.push(audioData);
+                  } else {
+                    this._queueAudio(audioData);
                   }
                 }
-              },
-            },
-            outputAudioTranscription: {},
-            inputAudioTranscription: {},
-            systemInstruction: {
-              parts: [{ text: this._buildSystemPrompt() }]
-            }
-          }
-        };
-        this.ws.send(JSON.stringify(setupMessage));
-      };
-
-      this.ws.onmessage = async (event) => {
-        let data;
-        if (event.data instanceof Blob) {
-          data = await blobToJSON(event.data);
-        } else {
-          data = JSON.parse(event.data);
-        }
-
-        if (data.setupComplete) {
-          this.setupComplete = true;
-          this.onStateChange?.('connected');
-          this._startMicrophone();
-
-          // Trigger the character to greet — keep it short for speed
-          this.ws.send(JSON.stringify({
-            clientContent: {
-              turns: [{
-                role: 'user',
-                parts: [{ text: 'Ring ring! Someone is calling you — pick up the phone!' }]
-              }],
-              turnComplete: true
-            }
-          }));
-
-          resolve();
-          return;
-        }
-
-        if (data.serverContent) {
-          const { serverContent } = data;
-
-          if (serverContent.interrupted) {
-            this._stopPlayback();
-            this.onStateChange?.('listening');
-            return;
-          }
-
-          if (serverContent.modelTurn) {
-            const parts = serverContent.modelTurn.parts || [];
-            for (const part of parts) {
-              if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
-                if (this._audioHeld) {
-                  this._heldAudioChunks.push(part.inlineData.data);
-                } else {
-                  this._queueAudio(part.inlineData.data);
-                }
               }
-              // Ignore part.text — that's internal thinking/reasoning, not spoken words
             }
-          }
 
-          // Capture actual spoken transcription (what the user hears)
-          if (serverContent.outputTranscription?.text) {
-            this.onTranscript?.('character', serverContent.outputTranscription.text);
-          }
-          // Capture user's spoken words
-          if (serverContent.inputTranscription?.text) {
-            this.onTranscript?.('user', serverContent.inputTranscription.text);
-          }
-        }
-      };
+            // Capture spoken transcription (what the user hears)
+            const outputText = serverContent.outputTranscription?.text;
+            if (outputText) {
+              this.onTranscript?.('character', outputText);
+            }
 
-      this.ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
-        this.onStateChange?.('error');
-        reject(err);
-      };
+            // Capture user's spoken words
+            const inputText = serverContent.inputTranscription?.text || serverContent.inputAudioTranscription?.text;
+            if (inputText) {
+              this.onTranscript?.('user', inputText);
+            }
+          },
 
-      this.ws.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
-        // Full cleanup on unexpected close to prevent ghost sessions
-        if (!this._disconnected) {
-          this.disconnect();
-        }
-      };
+          onerror: (err) => {
+            console.error('[RingRing] SDK error:', err);
+            clearTimeout(timeout);
+            this.onStateChange?.('error');
+            rejectConnect(err);
+          },
 
-      setTimeout(() => reject(new Error('Connection timeout')), 30000);
-    });
+          onclose: () => {
+            console.log('[RingRing] SDK session closed');
+            if (!this._disconnected) {
+              this.disconnect();
+            }
+          },
+        },
+      });
+
+      this._session = session;
+    } catch (err) {
+      clearTimeout(timeout);
+      throw err;
+    }
+
+    return connectPromise;
   }
 
-  async _ensureAudioContext() {
-    if (!this.audioContext || this.audioContext.state === 'closed') {
-      this.audioContext = new AudioContext({ sampleRate: 24000 });
-    }
-    if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume();
-    }
-    if (!this.outputAnalyser) {
-      this.outputAnalyser = this.audioContext.createAnalyser();
-      this.outputAnalyser.fftSize = 256;
-      this.outputAnalyser.smoothingTimeConstant = 0.3;
-      this.outputAnalyser.connect(this.audioContext.destination);
-    }
-  }
-
+  // ─── Input Audio (Microphone) ────────────────────────────
   async _startMicrophone() {
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: 16000,
+          sampleRate: SAMPLE_RATE_INPUT,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
         }
       });
 
-      const micContext = new AudioContext({ sampleRate: 16000 });
-      const actualMicRate = micContext.sampleRate;
-      const needsResample = actualMicRate !== 16000;
-      const source = micContext.createMediaStreamSource(this.mediaStream);
-      this.processor = micContext.createScriptProcessor(4096, 1, 1);
+      // Dedicated input AudioContext at 16kHz
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this._inputCtx = new AudioCtx({ sampleRate: SAMPLE_RATE_INPUT });
+      const actualRate = this._inputCtx.sampleRate;
+      const needsResample = actualRate !== SAMPLE_RATE_INPUT;
+
+      const source = this._inputCtx.createMediaStreamSource(this.mediaStream);
+      this.processor = this._inputCtx.createScriptProcessor(4096, 1, 1);
 
       this.processor.onaudioprocess = (e) => {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (!this._session || this._disconnected) return;
         if (this.muted || (!this.interruptible && this.isPlaying)) {
           this.onInputLevel?.(0);
           return;
@@ -261,7 +263,7 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
 
         // Downsample if browser didn't honor 16kHz request
         if (needsResample) {
-          const ratio = actualMicRate / 16000;
+          const ratio = actualRate / SAMPLE_RATE_INPUT;
           const newLength = Math.floor(inputData.length / ratio);
           const resampled = new Float32Array(newLength);
           for (let i = 0; i < newLength; i++) {
@@ -277,36 +279,24 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
           this.onInputLevel(Math.min(1, (sum / inputData.length) * 8));
         }
 
-        // Convert float32 to int16
-        const pcm16 = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        // Send via SDK
+        try {
+          this._session.sendRealtimeInput({
+            media: {
+              mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}`,
+              data: float32ToPcmBase64(inputData),
+            }
+          });
+        } catch (err) {
+          // Session may have closed
         }
-
-        const bytes = new Uint8Array(pcm16.buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-
-        this.ws.send(JSON.stringify({
-          realtimeInput: {
-            mediaChunks: [{
-              mimeType: 'audio/pcm;rate=16000',
-              data: base64
-            }]
-          }
-        }));
       };
 
       source.connect(this.processor);
-      this.processor.connect(micContext.destination);
-      this._micContext = micContext;
+      this.processor.connect(this._inputCtx.destination);
       this.onStateChange?.('listening');
 
-      // Start output volume monitoring loop
+      // Start output volume monitoring
       this._monitorOutputVolume();
     } catch (err) {
       console.error('Microphone error:', err);
@@ -314,11 +304,29 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
     }
   }
 
+  // ─── Output Audio (Playback) ─────────────────────────────
+  async _ensureOutputCtx() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!this._outputCtx || this._outputCtx.state === 'closed') {
+      this._outputCtx = new AudioCtx({ sampleRate: SAMPLE_RATE_OUTPUT });
+    }
+    if (this._outputCtx.state === 'suspended') {
+      await this._outputCtx.resume();
+    }
+    if (!this._outputAnalyser) {
+      this._outputAnalyser = this._outputCtx.createAnalyser();
+      this._outputAnalyser.fftSize = 256;
+      this._outputAnalyser.smoothingTimeConstant = 0.3;
+      this._outputAnalyser.connect(this._outputCtx.destination);
+    }
+  }
+
   _monitorOutputVolume() {
-    if (!this.outputAnalyser || !this.onOutputLevel) return;
-    const dataArray = new Uint8Array(this.outputAnalyser.frequencyBinCount);
+    if (!this._outputAnalyser || !this.onOutputLevel) return;
+    const dataArray = new Uint8Array(this._outputAnalyser.frequencyBinCount);
     const tick = () => {
-      this.outputAnalyser.getByteFrequencyData(dataArray);
+      if (this._disconnected) return;
+      this._outputAnalyser.getByteFrequencyData(dataArray);
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
       const avg = sum / dataArray.length / 255;
@@ -330,17 +338,16 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
 
   _stopPlayback() {
     this.activeSources.forEach(s => { try { s.stop(); } catch(e) {} });
-    this.activeSources = [];
+    this.activeSources.clear();
     this.nextPlayTime = 0;
     this.isPlaying = false;
   }
 
   async _queueAudio(base64Data) {
-    await this._ensureAudioContext();
+    await this._ensureOutputCtx();
 
     if (!this.isPlaying) {
       this.onStateChange?.('speaking');
-      // Start output volume monitoring if not already running
       if (!this._outputAnimFrame) {
         this._monitorOutputVolume();
       }
@@ -355,29 +362,29 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
         float32[i] = int16[i] / 32768.0;
       }
 
-      const audioBuffer = this.audioContext.createBuffer(1, float32.length, 24000);
+      const audioBuffer = this._outputCtx.createBuffer(1, float32.length, SAMPLE_RATE_OUTPUT);
       audioBuffer.getChannelData(0).set(float32);
 
-      const now = this.audioContext.currentTime;
+      const now = this._outputCtx.currentTime;
       if (!this.nextPlayTime || this.nextPlayTime < now) {
         this.nextPlayTime = now;
       }
 
-      const gainNode = this.audioContext.createGain();
+      const gainNode = this._outputCtx.createGain();
       gainNode.gain.value = 0.85;
-      gainNode.connect(this.outputAnalyser); // Route through analyser
+      gainNode.connect(this._outputAnalyser);
 
-      const source = this.audioContext.createBufferSource();
+      const source = this._outputCtx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(gainNode);
       source.start(this.nextPlayTime);
 
       this.nextPlayTime += audioBuffer.duration;
-      this.activeSources.push(source);
+      this.activeSources.add(source);
 
       source.onended = () => {
-        this.activeSources = this.activeSources.filter(s => s !== source);
-        if (this.activeSources.length === 0) {
+        this.activeSources.delete(source);
+        if (this.activeSources.size === 0) {
           this.isPlaying = false;
           this.onStateChange?.('listening');
         }
@@ -387,6 +394,7 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
     }
   }
 
+  // ─── Cleanup ─────────────────────────────────────────────
   disconnect() {
     if (this._disconnected) return;
     this._disconnected = true;
@@ -396,6 +404,7 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
       this._outputAnimFrame = null;
     }
 
+    // Stop mic
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(t => t.stop());
       this.mediaStream = null;
@@ -404,21 +413,22 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
       this.processor.disconnect();
       this.processor = null;
     }
-    if (this._micContext) {
-      this._micContext.close();
-      this._micContext = null;
+    if (this._inputCtx) {
+      this._inputCtx.close();
+      this._inputCtx = null;
     }
 
+    // Stop playback
     this._stopPlayback();
-
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
+    if (this._outputCtx) {
+      this._outputCtx.close();
+      this._outputCtx = null;
     }
 
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    // Close SDK session
+    if (this._session) {
+      try { this._session.close(); } catch {}
+      this._session = null;
     }
 
     this.onStateChange?.('disconnected');
