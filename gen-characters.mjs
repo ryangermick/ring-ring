@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'fs';
 
-const API_KEY = 'AIzaSyCZOFmD4PYFONfrIJSnTb8lwPPc9s2dX-0';
+const API_KEY = 'AIzaSyBRhrEL7iqflswjyQcGO8kakeG3LmZyffs';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${API_KEY}`;
 
 // Extract base64 from style-ref.js
