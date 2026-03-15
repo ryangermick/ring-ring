@@ -879,10 +879,14 @@ export default function App() {
           return;
         }
         setCallState(state);
-        if (state === 'error' || state === 'mic-error') {
+        if (state === 'reconnecting') {
+          setError('Reconnecting...');
+        } else if (state === 'connected' || state === 'listening' || state === 'speaking') {
+          setError(null); // clear any reconnecting/error message on recovery
+        } else if (state === 'error' || state === 'mic-error') {
           setError(state === 'mic-error' ? 'Microphone access denied. Please allow mic access and try again.' : 'Connection failed. Check your internet and try again.');
         }
-        // Auto-cleanup on unexpected disconnect
+        // Auto-cleanup on unexpected disconnect (only if session didn't reconnect)
         if (state === 'disconnected' && sessionRef.current) {
           sessionRef.current = null;
           clearInterval(timerRef.current);
@@ -1393,6 +1397,7 @@ export default function App() {
     const listening = callState === 'listening';
     const ringing = callState === 'ringing';
     const hasError = callState === 'error' || callState === 'mic-error';
+    const isReconnecting = callState === 'reconnecting';
 
     return (
       <div className="min-h-dvh bg-white flex flex-col items-center relative overflow-hidden">
@@ -1447,7 +1452,14 @@ export default function App() {
             ) : (
               <div className="h-full flex items-center justify-center">
                 {ringing && <span className="text-[#4285F4] font-semibold animate-pulse">Calling…</span>}
-                {hasError && <span className="text-[#EA4335] font-semibold text-sm text-center px-4">{error}</span>}
+                {isReconnecting && <span className="text-[#F4B400] font-semibold animate-pulse text-sm">Reconnecting…</span>}
+                {hasError && (
+                  <button onClick={() => { setError(null); setCallState('ringing'); handleCall(activeCharacter); }}
+                    className="flex flex-col items-center gap-1 active:scale-95 transition-transform">
+                    <span className="text-[#EA4335] font-semibold text-sm text-center px-4">{error}</span>
+                    <span className="text-[#4285F4] text-xs font-medium">Tap to redial</span>
+                  </button>
+                )}
                 {callState === 'connected' && <span className="text-slate-400 font-semibold">Connected</span>}
               </div>
             )}

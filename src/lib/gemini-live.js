@@ -5,6 +5,14 @@ const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
 const SAMPLE_RATE_INPUT = 16000;
 const SAMPLE_RATE_OUTPUT = 24000;
 
+// Robustness constants
+const MAX_CONNECT_RETRIES = 3;
+const RETRY_DELAYS = [1000, 2000, 4000]; // backoff ms
+const CONNECT_TIMEOUT_MS = 30000;
+const GREETING_TIMEOUT_MS = 8000;  // wait for first audio after connect
+const SILENCE_TIMEOUT_MS = 25000;  // no audio mid-call → reconnect (was 15s, too aggressive)
+const SEND_ERROR_THRESHOLD = 3;    // consecutive send failures → reconnect
+
 function base64ToArrayBuffer(base64) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -36,8 +44,8 @@ export class GeminiLiveSession {
     this._session = null;
 
     // Separate audio contexts for input and output
-    this._inputCtx = null;   // 16 kHz for mic capture
-    this._outputCtx = null;  // 24 kHz for playback
+    this._inputCtx = null;
+    this._outputCtx = null;
 
     this.mediaStream = null;
     this.processor = null;
@@ -51,12 +59,19 @@ export class GeminiLiveSession {
     this._disconnected = false;
     this._audioHeld = true;
     this._heldAudioChunks = [];
+
+    // Robustness state
+    this._connectAttempt = 0;
+    this._lastAudioTime = 0;
+    this._greetingTimer = null;
+    this._silenceTimer = null;
+    this._sendErrorCount = 0;
+    this._reconnecting = false;
   }
 
   _buildSystemPrompt() {
     let prompt = this.character.systemPrompt;
 
-    // Add user profile context
     if (this.userProfile) {
       const p = this.userProfile;
       const parts = [];
@@ -75,7 +90,6 @@ export class GeminiLiveSession {
       }
     }
 
-    // Add past conversation summaries
     if (this.pastConversations && this.pastConversations.length > 0) {
       const summaries = this.pastConversations.slice(0, 3).map(c => {
         const msgs = c.messages || [];
@@ -111,25 +125,110 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
 
   releaseAudio() {
     this._audioHeld = false;
-    // Flush any audio that arrived during the ring period
     for (const chunk of this._heldAudioChunks) {
       this._queueAudio(chunk);
     }
     this._heldAudioChunks = [];
   }
 
-  async connect() {
-    this.onStateChange?.('connecting');
+  // ─── Robustness: Timers ──────────────────────────────────
 
+  _clearTimers() {
+    if (this._greetingTimer) { clearTimeout(this._greetingTimer); this._greetingTimer = null; }
+    if (this._silenceTimer) { clearTimeout(this._silenceTimer); this._silenceTimer = null; }
+  }
+
+  _startGreetingTimer() {
+    this._clearTimers();
+    this._greetingTimer = setTimeout(() => {
+      if (this._disconnected || this._lastAudioTime > 0) return;
+      console.warn('[RingRing] No greeting received — resending starter');
+      // Try resending the starter message first
+      try {
+        this._session?.sendClientContent({ turns: 'Ring ring! Someone is calling you — pick up the phone!' });
+      } catch (e) {
+        console.error('[RingRing] Resend starter failed:', e);
+      }
+      // If still no audio after another interval, reconnect
+      this._greetingTimer = setTimeout(() => {
+        if (this._disconnected || this._lastAudioTime > 0) return;
+        console.warn('[RingRing] Still no greeting after retry — reconnecting');
+        this._attemptReconnect();
+      }, GREETING_TIMEOUT_MS);
+    }, GREETING_TIMEOUT_MS);
+  }
+
+  _resetSilenceTimer() {
+    if (this._silenceTimer) clearTimeout(this._silenceTimer);
+    if (this._disconnected) return;
+    this._silenceTimer = setTimeout(() => {
+      if (this._disconnected) return;
+      // Only trigger if we're supposedly connected and not playing
+      console.warn('[RingRing] Silence timeout — connection may be dead');
+      this._attemptReconnect();
+    }, SILENCE_TIMEOUT_MS);
+  }
+
+  _onAudioReceived() {
+    this._lastAudioTime = Date.now();
+    this._sendErrorCount = 0; // reset on healthy activity
+    this._resetSilenceTimer();
+  }
+
+  // ─── Robustness: Reconnect ───────────────────────────────
+
+  async _attemptReconnect() {
+    if (this._disconnected || this._reconnecting) return;
+    if (this._connectAttempt >= MAX_CONNECT_RETRIES) {
+      console.error('[RingRing] Max reconnect attempts reached');
+      this.onStateChange?.('error');
+      return;
+    }
+
+    this._reconnecting = true;
+    this.onStateChange?.('reconnecting');
+
+    // Tear down current session (but keep mic/audio contexts alive)
+    this._clearTimers();
+    if (this._session) {
+      try { this._session.close(); } catch {}
+      this._session = null;
+    }
+    this._stopPlayback();
+
+    const delay = RETRY_DELAYS[this._connectAttempt] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+    this._connectAttempt++;
+    console.log(`[RingRing] Reconnecting (attempt ${this._connectAttempt}/${MAX_CONNECT_RETRIES}) in ${delay}ms...`);
+
+    await new Promise(r => setTimeout(r, delay));
+
+    if (this._disconnected) return;
+
+    try {
+      await this._connectSession();
+      this._reconnecting = false;
+      console.log('[RingRing] Reconnected successfully');
+    } catch (err) {
+      console.error('[RingRing] Reconnect failed:', err);
+      this._reconnecting = false;
+      // Try again recursively
+      this._attemptReconnect();
+    }
+  }
+
+  // ─── Connect (internal, retryable) ───────────────────────
+
+  async _connectSession() {
     const client = new GoogleGenAI({ apiKey: API_KEY });
     const systemPrompt = this._buildSystemPrompt();
 
-    // Track whether onopen has fired for starter message
+    // Mutable holder so onopen can reference the session before connect() returns
+    const holder = { session: null };
+
     let resolveConnect, rejectConnect;
     const connectPromise = new Promise((res, rej) => { resolveConnect = res; rejectConnect = rej; });
 
-    // Connection timeout
-    const timeout = setTimeout(() => rejectConnect(new Error('Connection timeout')), 30000);
+    const timeout = setTimeout(() => rejectConnect(new Error('Connection timeout')), CONNECT_TIMEOUT_MS);
 
     try {
       const session = await client.live.connect({
@@ -153,15 +252,27 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
             console.log('[RingRing] SDK connected');
             this.onStateChange?.('connected');
 
-            // Start microphone capture
-            await this._startMicrophone();
-
-            // Send starter message to trigger character greeting
-            try {
-              session.sendClientContent({ turns: 'Ring ring! Someone is calling you — pick up the phone!' });
-            } catch (e) {
-              console.error('Starter send error:', e);
+            // Start mic if not already running (first connect)
+            if (!this.mediaStream) {
+              await this._startMicrophone();
             }
+
+            // Send starter message — use holder or this._session to avoid TDZ
+            // (onopen fires during connect() before the const assignment completes)
+            const sess = holder.session || this._session;
+            if (sess) {
+              try {
+                sess.sendClientContent({ turns: 'Ring ring! Someone is calling you — pick up the phone!' });
+              } catch (e) {
+                console.error('Starter send error:', e);
+              }
+            } else {
+              // Session not yet assigned — defer starter to after connect resolves
+              this._needsStarter = true;
+            }
+
+            // Start greeting timeout
+            this._startGreetingTimer();
 
             resolveConnect();
           },
@@ -171,19 +282,18 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
             const serverContent = message.serverContent;
             if (!serverContent) return;
 
-            // Handle interruption
             if (serverContent.interrupted) {
               this._stopPlayback();
               this.onStateChange?.('listening');
               return;
             }
 
-            // Handle audio data
             if (serverContent.modelTurn) {
               const parts = serverContent.modelTurn.parts || [];
               for (const part of parts) {
                 const audioData = part.inlineData?.data;
                 if (audioData && part.inlineData?.mimeType?.startsWith('audio/pcm')) {
+                  this._onAudioReceived();
                   if (this._audioHeld) {
                     this._heldAudioChunks.push(audioData);
                   } else {
@@ -193,13 +303,12 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
               }
             }
 
-            // Capture spoken transcription (what the user hears)
             const outputText = serverContent.outputTranscription?.text;
             if (outputText) {
+              this._onAudioReceived();
               this.onTranscript?.('character', outputText);
             }
 
-            // Capture user's spoken words
             const inputText = serverContent.inputTranscription?.text || serverContent.inputAudioTranscription?.text;
             if (inputText) {
               this.onTranscript?.('user', inputText);
@@ -209,26 +318,80 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
           onerror: (err) => {
             console.error('[RingRing] SDK error:', err);
             clearTimeout(timeout);
-            this.onStateChange?.('error');
+            // Don't immediately fire error state — let reconnect handle it
             rejectConnect(err);
           },
 
           onclose: () => {
             console.log('[RingRing] SDK session closed');
-            if (!this._disconnected) {
-              this.disconnect();
+            if (!this._disconnected && !this._reconnecting) {
+              // Attempt reconnect instead of just dying
+              this._attemptReconnect();
             }
           },
         },
       });
 
+      holder.session = session;
       this._session = session;
+
+      // If onopen fired before session was assigned, send the starter now
+      if (this._needsStarter) {
+        this._needsStarter = false;
+        try {
+          session.sendClientContent({ turns: 'Ring ring! Someone is calling you — pick up the phone!' });
+        } catch (e) {
+          console.error('Deferred starter send error:', e);
+        }
+      }
     } catch (err) {
       clearTimeout(timeout);
       throw err;
     }
 
     return connectPromise;
+  }
+
+  // ─── Public connect (with retry) ─────────────────────────
+
+  async connect() {
+    this.onStateChange?.('connecting');
+    this._connectAttempt = 0;
+    this._lastAudioTime = 0;
+    this._sendErrorCount = 0;
+
+    let lastErr;
+    for (let attempt = 0; attempt < MAX_CONNECT_RETRIES; attempt++) {
+      if (this._disconnected) return;
+      this._connectAttempt = attempt;
+
+      if (attempt > 0) {
+        const delay = RETRY_DELAYS[attempt - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+        console.log(`[RingRing] Retry ${attempt}/${MAX_CONNECT_RETRIES} in ${delay}ms...`);
+        this.onStateChange?.('reconnecting');
+        await new Promise(r => setTimeout(r, delay));
+        if (this._disconnected) return;
+      }
+
+      try {
+        await this._connectSession();
+        // Reset attempt counter on successful connect
+        this._connectAttempt = 0;
+        return; // success
+      } catch (err) {
+        console.error(`[RingRing] Connect attempt ${attempt + 1} failed:`, err);
+        lastErr = err;
+        // Clean up failed session
+        if (this._session) {
+          try { this._session.close(); } catch {}
+          this._session = null;
+        }
+      }
+    }
+
+    // All retries exhausted
+    this.onStateChange?.('error');
+    throw lastErr;
   }
 
   // ─── Input Audio (Microphone) ────────────────────────────
@@ -243,7 +406,6 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
         }
       });
 
-      // Dedicated input AudioContext at 16kHz
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       this._inputCtx = new AudioCtx({ sampleRate: SAMPLE_RATE_INPUT });
       const actualRate = this._inputCtx.sampleRate;
@@ -261,7 +423,6 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
 
         let inputData = e.inputBuffer.getChannelData(0);
 
-        // Downsample if browser didn't honor 16kHz request
         if (needsResample) {
           const ratio = actualRate / SAMPLE_RATE_INPUT;
           const newLength = Math.floor(inputData.length / ratio);
@@ -272,14 +433,13 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
           inputData = resampled;
         }
 
-        // Calculate input level for visualizer
         if (this.onInputLevel) {
           let sum = 0;
           for (let i = 0; i < inputData.length; i++) sum += Math.abs(inputData[i]);
           this.onInputLevel(Math.min(1, (sum / inputData.length) * 8));
         }
 
-        // Send via SDK
+        // Send via SDK — track errors for dead connection detection
         try {
           this._session.sendRealtimeInput({
             media: {
@@ -287,8 +447,14 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
               data: float32ToPcmBase64(inputData),
             }
           });
+          this._sendErrorCount = 0; // reset on success
         } catch (err) {
-          // Session may have closed
+          this._sendErrorCount++;
+          if (this._sendErrorCount >= SEND_ERROR_THRESHOLD) {
+            console.warn(`[RingRing] ${SEND_ERROR_THRESHOLD} consecutive send failures — reconnecting`);
+            this._sendErrorCount = 0;
+            this._attemptReconnect();
+          }
         }
       };
 
@@ -296,7 +462,6 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
       this.processor.connect(this._inputCtx.destination);
       this.onStateChange?.('listening');
 
-      // Start output volume monitoring
       this._monitorOutputVolume();
     } catch (err) {
       console.error('Microphone error:', err);
@@ -399,12 +564,13 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
     if (this._disconnected) return;
     this._disconnected = true;
 
+    this._clearTimers();
+
     if (this._outputAnimFrame) {
       cancelAnimationFrame(this._outputAnimFrame);
       this._outputAnimFrame = null;
     }
 
-    // Stop mic
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(t => t.stop());
       this.mediaStream = null;
@@ -418,14 +584,12 @@ CRITICAL: NEVER break character. You ARE this character — not an AI, not a lan
       this._inputCtx = null;
     }
 
-    // Stop playback
     this._stopPlayback();
     if (this._outputCtx) {
       this._outputCtx.close();
       this._outputCtx = null;
     }
 
-    // Close SDK session
     if (this._session) {
       try { this._session.close(); } catch {}
       this._session = null;
