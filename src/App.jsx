@@ -614,11 +614,37 @@ export default function App() {
     }
   }, []);
 
+  // Force-kill any active Gemini session (fire-and-forget cleanup)
+  const forceCleanupSession = useCallback(() => {
+    if (sessionRef.current) {
+      sessionRef.current.disconnect();
+      sessionRef.current = null;
+    }
+    callAbortedRef.current = true;
+    if (callSetupRef.current) {
+      clearTimeout(callSetupRef.current);
+      callSetupRef.current = null;
+    }
+    clearInterval(timerRef.current);
+    setCallState('idle');
+    setInputLevel(0);
+    setOutputLevel(0);
+    setDuration(0);
+    setActiveCharacter(null);
+  }, []);
+
   // Handle browser back/forward
   useEffect(() => {
     const onPop = () => {
       const path = window.location.pathname;
       const s = pathToScreen[path];
+
+      // If navigating away from a call, clean up the session
+      const leavingCall = !path.match(/^\/[a-z]/) || s;
+      if (leavingCall && sessionRef.current) {
+        forceCleanupSession();
+      }
+
       if (s) { setScreenRaw(s); }
       else if (path.startsWith('/characters/')) {
         const slug = path.split('/')[2];
@@ -635,7 +661,20 @@ export default function App() {
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [characters, user]);
+  }, [characters, user, forceCleanupSession]);
+
+  // Clean up session on page unload (refresh, close tab)
+  useEffect(() => {
+    const onUnload = () => {
+      if (sessionRef.current) {
+        sessionRef.current.disconnect();
+        sessionRef.current = null;
+      }
+    };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, []);
+
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
@@ -819,11 +858,23 @@ export default function App() {
   });
 
   const handleLogout = async () => {
+    forceCleanupSession();
     await supabase.auth.signOut();
     setScreen('login');
   };
 
   const startCall = async (character) => {
+    // Always clean up any existing session before starting a new call
+    if (sessionRef.current) {
+      sessionRef.current.disconnect();
+      sessionRef.current = null;
+    }
+    if (callSetupRef.current) {
+      clearTimeout(callSetupRef.current);
+      callSetupRef.current = null;
+    }
+    clearInterval(timerRef.current);
+
     setActiveCharacter(character);
     setScreen('call', character.id);
     callAbortedRef.current = false;
@@ -1067,6 +1118,7 @@ export default function App() {
   };
 
   const deleteAllData = async () => {
+    forceCleanupSession();
     try {
       // Delete messages for user's conversations
       const { data: convos } = await supabase.from('conversations').select('id').eq('user_id', user.id);
