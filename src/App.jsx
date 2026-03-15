@@ -1480,7 +1480,7 @@ export default function App() {
         {/* Massive character image — seamless with white bg */}
         <div className="flex-1 flex flex-col items-center justify-center w-full pt-20 pb-0 overflow-hidden">
           <img src={activeCharacter.image} alt={activeCharacter.name}
-            className={`w-[130vw] max-w-[800px] object-contain transition-transform duration-500 ${speaking ? 'scale-[1.06]' : ''}`} />
+            className={`w-[130vw] max-w-[800px] max-h-[50vh] object-contain transition-transform duration-500 ${speaking ? 'scale-[1.06]' : ''}`} />
         </div>
 
         {/* Bottom controls area */}
