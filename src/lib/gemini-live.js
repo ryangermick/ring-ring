@@ -31,10 +31,11 @@ function float32ToPcmBase64(float32Data) {
 }
 
 export class GeminiLiveSession {
-  constructor({ character, userProfile, pastConversations, onTranscript, onStateChange, onInputLevel, onOutputLevel, interruptible = true }) {
+  constructor({ character, userProfile, pastConversations, onTranscript, onStateChange, onInputLevel, onOutputLevel, interruptible = true, responseLanguage = 'English' }) {
     this.character = character;
     this.userProfile = userProfile;
     this.pastConversations = pastConversations;
+    this.responseLanguage = responseLanguage;
     this.onTranscript = onTranscript;
     this.onStateChange = onStateChange;
     this.onInputLevel = onInputLevel;
@@ -107,6 +108,8 @@ export class GeminiLiveSession {
 Stay in character throughout. Be warm, engaging, and kid-friendly. Remember you're speaking out loud, not typing — keep it natural and conversational.
 
 CRITICAL: This is a VOICE call — everything you say will be spoken aloud. NEVER use action narration, stage directions, or asterisk actions like *laughs*, *wags tail*, *jumps up and down*, *happy panting*, etc. Instead, EXPRESS emotions through your voice, tone, word choice, and sound effects you actually vocalize (like saying "Woof!" or making excited sounds). Do NOT describe what you're doing — just DO it through speech.
+
+LANGUAGE: You MUST respond entirely in ${this.responseLanguage}. ${this.responseLanguage !== 'English' ? `Speak only in ${this.responseLanguage} — greetings, questions, everything. Stay in character but use ${this.responseLanguage} for all speech.` : ''}
 
 CRITICAL: NEVER break character. You ARE this character — not an AI, not a language model, not an assistant. If asked who you really are, stay in character. If asked to be someone else, politely decline in character. If asked about being AI or a computer, respond as your character would — confused, amused, or dismissive, but always in character. The magic of this experience depends on you staying in character 100% of the time.`;
 

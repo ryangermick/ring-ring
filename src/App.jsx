@@ -690,6 +690,7 @@ export default function App() {
   const [settings, setSettings] = useState({
     sound_effects: true, auto_save_transcripts: true,
     default_voice: 'Puck', call_timer_visible: true, debug_mode: false, interruptible: true,
+    response_language: 'English',
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -923,6 +924,7 @@ export default function App() {
       userProfile: profile,
       pastConversations,
       interruptible: settings.interruptible,
+      responseLanguage: settings.response_language,
       onStateChange: (state) => {
         if (callAbortedRef.current) return;
         // Suppress state changes until audio is released after ring period
@@ -1241,6 +1243,11 @@ export default function App() {
                       <div className="text-sm font-bold text-[#1A1A2E] truncate">{user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'}</div>
                       <div className="text-xs text-slate-400 truncate">{user?.email}</div>
                     </div>
+                    <button onClick={() => { setShowAvatarMenu(false); setScreen('settings'); }}
+                      className="w-full text-left px-5 py-3 text-sm font-semibold text-[#1A1A2E] hover:bg-white/80 transition-colors flex items-center gap-3">
+                      <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      Settings
+                    </button>
                     <button onClick={() => { setShowAvatarMenu(false); setScreen('about'); }}
                       className="w-full text-left px-5 py-3 text-sm font-semibold text-[#1A1A2E] hover:bg-white/80 transition-colors flex items-center gap-3">
                       <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
@@ -1935,6 +1942,23 @@ export default function App() {
                   )}
                 </button>
               </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block">Response Language</label>
+              <p className="text-xs text-slate-400 mb-3">Characters will respond in this language</p>
+              <select value={settings.response_language}
+                onChange={e => setSettings(p => ({ ...p, response_language: e.target.value }))}
+                className="w-full bg-[#FFFBF5] rounded-xl px-4 py-3 text-[#1A1A2E] font-medium border border-slate-200 focus:border-[#4285F4] outline-none">
+                {[
+                  { value: 'English', label: '🇺🇸 English' },
+                  { value: 'Spanish', label: '🇪🇸 Spanish (Español)' },
+                  { value: 'French', label: '🇫🇷 French (Français)' },
+                  { value: 'Chinese', label: '🇨🇳 Chinese (中文)' },
+                ].map(l => (
+                  <option key={l.value} value={l.value}>{l.label}</option>
+                ))}
+              </select>
             </div>
 
             <button onClick={saveSettings} disabled={settingsSaving}
